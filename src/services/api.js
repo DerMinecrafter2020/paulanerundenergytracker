@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
 export const fetchLogs = async (date) => {
   const url = new URL('/api/logs', API_BASE_URL);

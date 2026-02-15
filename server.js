@@ -2,16 +2,25 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
 
 app.use(cors({ origin: ALLOWED_ORIGIN }));
 app.use(express.json());
+
+// Static Frontend
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
 
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
@@ -100,6 +109,11 @@ app.delete('/api/logs/:id', async (req, res) => {
     console.error('DELETE /api/logs error:', err);
     res.status(500).json({ error: 'Database error' });
   }
+});
+
+// SPA Fallback
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 initDb()
