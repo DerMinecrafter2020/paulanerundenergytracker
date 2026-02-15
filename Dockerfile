@@ -23,10 +23,10 @@ COPY --from=build /app/dist ./dist
 
 # Kopiere Server
 COPY server.js .
-COPY .env.local .
 
 EXPOSE 3001
 
 ENV NODE_ENV=production
+ENV DB_TYPE=local
 
 CMD ["node", "server.js"]

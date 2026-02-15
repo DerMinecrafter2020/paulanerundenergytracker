@@ -22,6 +22,19 @@ install_docker() {
     echo "  📦 Erkannt: Ubuntu/Debian"
     sudo apt-get update -y
     sudo apt-get install -y docker.io docker-compose
+  elif command -v rpm-ostree >/dev/null 2>&1; then
+    echo "  📦 Erkannt: Fedora Atomic/Bazzite"
+    echo "  Installiere mit rpm-ostree..."
+    rpm-ostree install docker docker-compose
+    echo "  ⚠️  System-Neustart erforderlich!"
+    read -p "Jetzt neustarten? (j/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Jj]$ ]]; then
+      systemctl reboot
+    else
+      echo "  ⚠️  Bitte manuell neustarten: systemctl reboot"
+      exit 1
+    fi
   elif command -v dnf >/dev/null 2>&1; then
     echo "  📦 Erkannt: Fedora"
     sudo dnf install -y docker docker-compose
