@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: derminecrafter2020/koffein-tracker:latest
     container_name: koffein-tracker
     ports:
       - "3001:3001"
