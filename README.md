@@ -150,14 +150,6 @@ server {
 
 ## 📤 Upload auf den Server
 
-### Variante 1: SCP
-
-```bash
-scp -r . user@SERVER-IP:/opt/koffein-tracker
-```
-
-### Variante 2: Git
-
 ```bash
 git clone <repo-url> /opt/koffein-tracker
 ```
