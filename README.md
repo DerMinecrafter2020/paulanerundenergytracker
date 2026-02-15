@@ -1,4 +1,4 @@
-# ⚡ Caffeine Tracker
+# ⚡ Koffein Tracker
 
 > Eine vollständige Web-App zum Tracking von Koffeinkonsum aus Energy Drinks und koffeinhaltigen Getränken.
 
@@ -219,5 +219,5 @@ Entwickelt mit ❤️ und ☕
 
 ---
 
-**Made with ⚡ by [Dein Name]**  
+**Made with ⚡ by Cornelius**  
 **Version 1.0** | **Februar 2026**
