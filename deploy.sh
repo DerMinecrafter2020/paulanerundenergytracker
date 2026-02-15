@@ -4,18 +4,40 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR"  # Stelle sicher, dass wir immer im richtigen Verzeichnis sind
 LOG_DIR="$APP_DIR/logs"
-PID_FILE="$APP_DIR/app.pid"
+CONTAINER_NAME="koffein-tracker"
 
 mkdir -p "$LOG_DIR"
 
-is_service_running() {
-  if [[ -f "$PID_FILE" ]]; then
-    local pid=$(cat "$PID_FILE" || true)
-    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-      return 0  # Service läuft
-    fi
+is_container_running() {
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
+    return 0  # Container läuft
   fi
-  return 1  # Service läuft nicht
+  return 1  # Container läuft nicht
+}
+
+ensure_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "❌ Docker ist nicht installiert!"
+    echo "Bitte installieren Sie Docker:"
+    echo "  Ubuntu/Debian: sudo apt-get install -y docker.io docker-compose"
+    echo "  Fedora: sudo dnf install -y docker docker-compose"
+    exit 1
+  fi
+
+  if ! command -v docker-compose >/dev/null 2>&1; then
+    echo "❌ Docker Compose ist nicht installiert!"
+    echo "Bitte installieren Sie Docker Compose:"
+    echo "  Ubuntu/Debian: sudo apt-get install -y docker-compose"
+    echo "  Fedora: sudo dnf install -y docker-compose"
+    exit 1
+  fi
+
+  # Prüfe ob Docker-Daemon läuft
+  if ! docker ps >/dev/null 2>&1; then
+    echo "🔧 Starte Docker Daemon..."
+    sudo systemctl start docker
+    sudo systemctl enable docker
+  fi
 }
 
 ensure_root() {
@@ -29,32 +51,9 @@ ensure_root() {
   fi
 }
 
-install_node() {
-  echo "Installiere Node.js und npm..."
-  if command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update -y
-    sudo apt-get install -y curl ca-certificates gnupg
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-  elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y nodejs npm
-  elif command -v yum >/dev/null 2>&1; then
-    sudo yum install -y nodejs npm
-  elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -Sy --noconfirm nodejs npm
-  else
-    echo "Kein unterstützter Paketmanager gefunden. Bitte Node.js manuell installieren."
-    exit 1
-  fi
-}
 
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  ensure_root
-  install_node
-fi
-
-command -v node >/dev/null 2>&1 || { echo "Node.js fehlt"; exit 1; }
-command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
+# Docker wird verwendet, Node.js nicht direkt nötig
+ensure_docker
 
 create_env_files() {
   local env_example=".env.example"
@@ -231,7 +230,13 @@ obtain_ssl_cert() {
   sudo certbot --nginx -d "$domain" --non-interactive --agree-tos -m "$email" --redirect
 }
 
+# =================================================================
+# MAIN DEPLOYMENT LOGIC
+# =================================================================
 
+echo "🐳 Koffein-Tracker Deployment mit Docker"
+echo "========================================="
+echo ""
 
 create_env_files
 
@@ -254,17 +259,17 @@ set_env_key() {
   fi
 }
 
-# Prüfe ob Service bereits läuft
-if is_service_running; then
+# Prüfe ob Container bereits läuft
+if is_container_running; then
   echo ""
-  echo "✓ Service läuft bereits (PID: $(cat "$PID_FILE"))"
+  echo "✓ Docker Container läuft bereits"
   echo "🔄 Überspringe Datenbankauswahl, verwende existierende Konfiguration..."
   SERVICE_ALREADY_RUNNING=true
 else
   SERVICE_ALREADY_RUNNING=false
   
   echo "Datenbank wählen:"
-  echo "1) MySQL"
+  echo "1) MySQL (lokal im Speicher)"
   echo "2) InfluxDB"
   read -r DB_CHOICE
 
@@ -312,28 +317,29 @@ fi
 
 cd "$APP_DIR"
 
-echo "Installiere Abhängigkeiten..."
-npm install --no-progress
+# Docker Build und Deployment
+echo ""
+echo "🔨 Baue Docker Image..."
+sudo docker-compose build --no-cache
 
-echo "Baue Frontend..."
-npm run build
+echo ""
+echo "🚀 Starte Docker Container..."
+sudo docker-compose down 2>/dev/null || true
+sudo docker-compose up -d
 
-echo "Starte API-Server..."
-if [[ -f "$PID_FILE" ]]; then
-  OLD_PID=$(cat "$PID_FILE" || true)
-  if [[ -n "${OLD_PID}" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
-    echo "Beende laufenden Prozess $OLD_PID"
-    kill "$OLD_PID"
-    sleep 2
-  fi
+# Warte bis Container ready ist
+echo "⏳ Warte bis Container bereit ist..."
+sleep 5
+
+if is_container_running; then
+  CONTAINER_ID=$(docker ps --filter "name=$CONTAINER_NAME" --format "{{.ID}}" | head -c 12)
+  echo "✅ Docker Container läuft (ID: $CONTAINER_ID)"
+else
+  echo "❌ Container konnte nicht gestartet werden!"
+  echo "Logs:"
+  sudo docker-compose logs --tail=50
+  exit 1
 fi
-
-nohup npm run server > "$LOG_DIR/server.log" 2>&1 &
-NEW_PID=$!
-
-echo "$NEW_PID" > "$PID_FILE"
-
-echo "Fertig. Server läuft (PID $NEW_PID)."
 
 # Domain-Konfiguration nur beim ersten Deployment
 if [[ "$SERVICE_ALREADY_RUNNING" == "false" ]]; then
@@ -376,22 +382,27 @@ if [[ "$SERVICE_ALREADY_RUNNING" == "false" ]]; then
 
       set_env_key "CORS_ORIGIN" "https://${DOMAIN_NAME}"
 
-      if [[ -f "$PID_FILE" ]]; then
-        OLD_PID=$(cat "$PID_FILE" || true)
-        if [[ -n "${OLD_PID}" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
-          echo "Starte API-Server neu (PID $OLD_PID)"
-          kill "$OLD_PID"
-          sleep 2
-          nohup npm run server > "$LOG_DIR/server.log" 2>&1 &
-          NEW_PID=$!
-          echo "$NEW_PID" > "$PID_FILE"
-          echo "Neuer PID: $NEW_PID"
-        fi
-      fi
+      # Restart Container mit neuer Config
+      echo "🔄 Starte Docker Container neu..."
+      sudo docker-compose restart
+      sleep 3
     fi
   fi
 else
   echo "✓ Domain bereits konfiguriert. Überspringe Setup."
 fi
 
-echo "Tipp: Für Systemdienste nutze ./install_systemd.sh"
+echo ""
+echo "========================================="
+echo "✅ Deployment erfolgreich abgeschlossen!"
+echo "========================================="
+echo ""
+echo "🌐 App erreichbar unter:"
+echo "   http://localhost:3001"
+echo ""
+echo "📊 Container Status:"
+sudo docker-compose ps
+echo ""
+echo "📝 Logs anzeigen: docker-compose logs -f"
+echo "🛑 Container stoppen: docker-compose down"
+echo "♻️  Container neustarten: docker-compose restart"

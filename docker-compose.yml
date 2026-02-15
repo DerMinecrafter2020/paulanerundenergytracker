@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: koffein-tracker
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - DB_TYPE=${DB_TYPE:-local}
+      - MYSQL_HOST=${MYSQL_HOST:-localhost}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-caffeine_tracker}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
+      - PORT=3001
+    volumes:
+      - ./.env.local:/app/.env.local:ro
+    restart: unless-stopped
+    networks:
+      - koffein-network
+
+  # Optional: MySQL Service (wenn DB_TYPE=mysql)
+  # mysql:
+  #   image: mysql:8.0
+  #   container_name: koffein-mysql
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+  #     MYSQL_DATABASE: ${MYSQL_DATABASE}
+  #   volumes:
+  #     - mysql-data:/var/lib/mysql
+  #   networks:
+  #     - koffein-network
+  #   restart: unless-stopped
+
+networks:
+  koffein-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
