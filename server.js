@@ -4,14 +4,26 @@ import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const DB_TYPE = process.env.DB_TYPE || 'mysql';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const packageJsonPath = path.join(__dirname, 'package.json');
+let appVersion = 'unknown';
+
+try {
+  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  appVersion = pkg.version || 'unknown';
+} catch (err) {
+  console.error('Konnte package.json nicht lesen:', err);
+}
 
 const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
 
@@ -21,6 +33,10 @@ app.use(express.json());
 // Static Frontend
 const distPath = path.join(__dirname, 'dist');
 app.use(express.static(distPath));
+
+if (DB_TYPE !== 'mysql') {
+  console.error(`DB_TYPE ${DB_TYPE} ist nicht implementiert. Bitte mysql verwenden.`);
+}
 
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
@@ -53,6 +69,10 @@ const initDb = async () => {
 
 app.get('/api/health', async (req, res) => {
   res.json({ status: 'ok' });
+});
+
+app.get('/api/version', async (req, res) => {
+  res.json({ version: appVersion });
 });
 
 app.get('/api/logs', async (req, res) => {
@@ -115,6 +135,11 @@ app.delete('/api/logs/:id', async (req, res) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
+
+if (DB_TYPE !== 'mysql') {
+  console.error('Starte API nicht: DB_TYPE ist nicht mysql.');
+  process.exit(1);
+}
 
 initDb()
   .then(() => {

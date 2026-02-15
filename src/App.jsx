@@ -5,7 +5,14 @@ import PresetDrinks from './components/PresetDrinks';
 import OnlineSearch from './components/OnlineSearch';
 import ManualCalculator from './components/ManualCalculator';
 import DrinkHistory from './components/DrinkHistory';
-import { fetchLogs, createLog, deleteLog } from './services/api';
+import {
+  DATA_SOURCES,
+  getSavedDataSource,
+  setSavedDataSource,
+  fetchTodayLogs,
+  addLog,
+  removeLog,
+} from './services/storage';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 
@@ -14,21 +21,49 @@ function App() {
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState(null);
   const [manualPrefill, setManualPrefill] = useState(null);
+  const [dataSource, setDataSource] = useState(getSavedDataSource());
+  const [currentVersion, setCurrentVersion] = useState('local');
+  const [latestVersion, setLatestVersion] = useState(null);
 
-  // Logs für heute laden (lokal)
+  // Logs für heute laden (je nach Datenquelle)
   useEffect(() => {
     const loadToday = async () => {
       try {
         const today = getTodayKey();
-        const todayLogs = await fetchLogs(today);
+        const todayLogs = await fetchTodayLogs(dataSource, today);
         setLogs(todayLogs);
       } catch (err) {
-        setError('Fehler beim Laden der Daten. Starte den API-Server?');
+        setError('Fehler beim Laden der Daten. Prüfe die Datenquelle.');
         console.error(err);
       }
     };
 
     loadToday();
+  }, [dataSource]);
+
+  // Update-Check
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkVersion = async () => {
+      try {
+        const response = await fetch('/api/version');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isMounted) return;
+        setLatestVersion(data.version || null);
+      } catch (err) {
+        // Ignorieren, falls API nicht erreichbar
+      }
+    };
+
+    checkVersion();
+    const interval = setInterval(checkVersion, 5 * 60 * 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Gesamtes Koffein für heute berechnen
@@ -46,7 +81,7 @@ function App() {
         ...drinkData,
         date: getTodayKey(),
       };
-      const created = await createLog(payload);
+      const created = await addLog(dataSource, payload);
       setLogs((prev) => [created, ...prev]);
     } catch (err) {
       setError('Fehler beim Hinzufügen. Bitte versuche es erneut.');
@@ -54,7 +89,7 @@ function App() {
     } finally {
       setIsOperationLoading(false);
     }
-  }, []);
+  }, [dataSource]);
 
   // Eintrag löschen
   const handleDeleteLog = useCallback(async (logId) => {
@@ -62,7 +97,7 @@ function App() {
     setError(null);
 
     try {
-      await deleteLog(logId);
+      await removeLog(dataSource, logId);
       setLogs((prev) => prev.filter((log) => log.id !== logId));
     } catch (err) {
       setError('Fehler beim Löschen. Bitte versuche es erneut.');
@@ -70,7 +105,7 @@ function App() {
     } finally {
       setIsOperationLoading(false);
     }
-  }, []);
+  }, [dataSource]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -80,6 +115,59 @@ function App() {
       />
 
       <main className="max-w-lg mx-auto px-4 pb-8">
+        {/* Update Hinweis */}
+        {latestVersion && latestVersion !== currentVersion && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 
+            px-4 py-3 rounded-2xl mb-6 animate-fade-in">
+            <p className="text-sm font-medium">Update verfügbar: {latestVersion}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-xs underline mt-1"
+            >
+              Neu laden
+            </button>
+          </div>
+        )}
+        {/* Datenquelle */}
+        <div className="bg-white rounded-3xl shadow-lg p-5 mb-6 animate-fade-in">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-700">Datenquelle</h3>
+            <span className="text-xs text-slate-400">aktuell: {dataSource === DATA_SOURCES.MYSQL ? 'MySQL API' : 'Lokal'}</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSavedDataSource(DATA_SOURCES.LOCAL);
+                setDataSource(DATA_SOURCES.LOCAL);
+              }}
+              className={`flex-1 py-2.5 px-4 rounded-xl font-medium transition-all duration-200
+                ${dataSource === DATA_SOURCES.LOCAL
+                  ? 'bg-energy-blue text-white shadow-md'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+            >
+              Lokal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSavedDataSource(DATA_SOURCES.MYSQL);
+                setDataSource(DATA_SOURCES.MYSQL);
+              }}
+              className={`flex-1 py-2.5 px-4 rounded-xl font-medium transition-all duration-200
+                ${dataSource === DATA_SOURCES.MYSQL
+                  ? 'bg-energy-blue text-white shadow-md'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+            >
+              MySQL (API)
+            </button>
+          </div>
+          <p className="text-xs text-slate-400 mt-3">
+            Hinweis: MySQL benötigt den laufenden API-Server.
+          </p>
+        </div>
         {/* Fehlermeldung */}
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 
