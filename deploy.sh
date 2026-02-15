@@ -8,6 +8,16 @@ PID_FILE="$APP_DIR/app.pid"
 
 mkdir -p "$LOG_DIR"
 
+is_service_running() {
+  if [[ -f "$PID_FILE" ]]; then
+    local pid=$(cat "$PID_FILE" || true)
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      return 0  # Service läuft
+    fi
+  fi
+  return 1  # Service läuft nicht
+}
+
 ensure_root() {
   if [[ $EUID -ne 0 ]]; then
     if command -v sudo >/dev/null 2>&1; then
@@ -126,29 +136,6 @@ update_app() {
   echo "Update abgeschlossen."
 }
 
-
-
-create_env_files
-
-echo "Update prüfen und installieren?"
-echo "1) Ja"
-echo "2) Nein"
-read -r UPDATE_CHOICE
-
-if [[ "$UPDATE_CHOICE" == "1" ]]; then
-  update_app || true
-fi
-
-set_env_key() {
-  local key="$1"
-  local value="$2"
-  if grep -qE "^${key}=" .env.local; then
-    sed -i "s|^${key}=.*|${key}=${value}|" .env.local
-  else
-    echo "${key}=${value}" >> .env.local
-  fi
-}
-
 get_public_ip() {
   if command -v curl >/dev/null 2>&1; then
     curl -s https://api.ipify.org || true
@@ -244,50 +231,83 @@ obtain_ssl_cert() {
   sudo certbot --nginx -d "$domain" --non-interactive --agree-tos -m "$email" --redirect
 }
 
-echo "Datenbank wählen:"
-echo "1) MySQL"
-echo "2) InfluxDB"
-read -r DB_CHOICE
 
-case "$DB_CHOICE" in
-  1)
-    set_env_key "DB_TYPE" "mysql"
-    echo "MySQL Konfiguration: (Standardwerte werden verwendet)"
-    read -r -s -p "Passwort: " MYSQL_PASS_INPUT
-    echo
 
-    set_env_key "MYSQL_HOST" "localhost"
-    set_env_key "MYSQL_PORT" "3306"
-    set_env_key "MYSQL_USER" "root"
-    set_env_key "MYSQL_PASSWORD" "${MYSQL_PASS_INPUT}"
-    set_env_key "MYSQL_DATABASE" "caffeine_tracker"
-    ;;
-  2)
-    set_env_key "DB_TYPE" "influx"
-    ;;
-  *)
-    echo "Ungültige Auswahl."
+create_env_files
+
+echo "Update prüfen und installieren?"
+echo "1) Ja"
+echo "2) Nein"
+read -r UPDATE_CHOICE
+
+if [[ "$UPDATE_CHOICE" == "1" ]]; then
+  update_app || true
+fi
+
+set_env_key() {
+  local key="$1"
+  local value="$2"
+  if grep -qE "^${key}=" .env.local; then
+    sed -i "s|^${key}=.*|${key}=${value}|" .env.local
+  else
+    echo "${key}=${value}" >> .env.local
+  fi
+}
+
+# Prüfe ob Service bereits läuft
+if is_service_running; then
+  echo ""
+  echo "✓ Service läuft bereits (PID: $(cat "$PID_FILE"))"
+  echo "🔄 Überspringe Datenbankauswahl, verwende existierende Konfiguration..."
+  SERVICE_ALREADY_RUNNING=true
+else
+  SERVICE_ALREADY_RUNNING=false
+  
+  echo "Datenbank wählen:"
+  echo "1) MySQL"
+  echo "2) InfluxDB"
+  read -r DB_CHOICE
+
+  case "$DB_CHOICE" in
+    1)
+      set_env_key "DB_TYPE" "mysql"
+      echo "MySQL Konfiguration: (Standardwerte werden verwendet)"
+      read -r -s -p "Passwort: " MYSQL_PASS_INPUT
+      echo
+
+      set_env_key "MYSQL_HOST" "localhost"
+      set_env_key "MYSQL_PORT" "3306"
+      set_env_key "MYSQL_USER" "root"
+      set_env_key "MYSQL_PASSWORD" "${MYSQL_PASS_INPUT}"
+      set_env_key "MYSQL_DATABASE" "caffeine_tracker"
+      ;;
+    2)
+      set_env_key "DB_TYPE" "influx"
+      ;;
+    *)
+      echo "Ungültige Auswahl."
+      exit 1
+      ;;
+  esac
+
+  set -a
+  source .env.local
+  set +a
+
+  if [[ "${DB_TYPE}" == "mysql" ]]; then
+    : "${MYSQL_HOST:?MYSQL_HOST fehlt}"
+    : "${MYSQL_USER:?MYSQL_USER fehlt}"
+    : "${MYSQL_PASSWORD:?MYSQL_PASSWORD fehlt}"
+    : "${MYSQL_DATABASE:?MYSQL_DATABASE fehlt}"
+  elif [[ "${DB_TYPE}" == "influx" ]]; then
+    : "${INFLUX_URL:?INFLUX_URL fehlt}"
+    : "${INFLUX_TOKEN:?INFLUX_TOKEN fehlt}"
+    : "${INFLUX_ORG:?INFLUX_ORG fehlt}"
+    : "${INFLUX_BUCKET:?INFLUX_BUCKET fehlt}"
+    echo "InfluxDB ist im Backend noch nicht implementiert."
+    echo "Bitte MySQL wählen oder die InfluxDB-Implementierung hinzufügen."
     exit 1
-    ;;
-esac
-
-set -a
-source .env.local
-set +a
-
-if [[ "${DB_TYPE}" == "mysql" ]]; then
-  : "${MYSQL_HOST:?MYSQL_HOST fehlt}"
-  : "${MYSQL_USER:?MYSQL_USER fehlt}"
-  : "${MYSQL_PASSWORD:?MYSQL_PASSWORD fehlt}"
-  : "${MYSQL_DATABASE:?MYSQL_DATABASE fehlt}"
-elif [[ "${DB_TYPE}" == "influx" ]]; then
-  : "${INFLUX_URL:?INFLUX_URL fehlt}"
-  : "${INFLUX_TOKEN:?INFLUX_TOKEN fehlt}"
-  : "${INFLUX_ORG:?INFLUX_ORG fehlt}"
-  : "${INFLUX_BUCKET:?INFLUX_BUCKET fehlt}"
-  echo "InfluxDB ist im Backend noch nicht implementiert."
-  echo "Bitte MySQL wählen oder die InfluxDB-Implementierung hinzufügen."
-  exit 1
+  fi
 fi
 
 cd "$APP_DIR"
@@ -315,57 +335,63 @@ echo "$NEW_PID" > "$PID_FILE"
 
 echo "Fertig. Server läuft (PID $NEW_PID)."
 
-echo "Soll die App über eine Domain erreichbar sein?"
-echo "1) Ja"
-echo "2) Nein"
-read -r DOMAIN_CHOICE
+# Domain-Konfiguration nur beim ersten Deployment
+if [[ "$SERVICE_ALREADY_RUNNING" == "false" ]]; then
+  echo ""
+  echo "Soll die App über eine Domain erreichbar sein?"
+  echo "1) Ja"
+  echo "2) Nein"
+  read -r DOMAIN_CHOICE
 
-if [[ "$DOMAIN_CHOICE" == "1" ]]; then
-  read -r -p "Domain (z.B. example.com): " DOMAIN_NAME
-  if [[ -z "$DOMAIN_NAME" ]]; then
-    echo "Keine Domain angegeben. Überspringe Domain-Konfiguration."
-  else
-    DOMAIN_IP=$(resolve_domain_ip "$DOMAIN_NAME")
-    PUBLIC_IP=$(get_public_ip)
+  if [[ "$DOMAIN_CHOICE" == "1" ]]; then
+    read -r -p "Domain (z.B. example.com): " DOMAIN_NAME
+    if [[ -z "$DOMAIN_NAME" ]]; then
+      echo "Keine Domain angegeben. Überspringe Domain-Konfiguration."
+    else
+      DOMAIN_IP=$(resolve_domain_ip "$DOMAIN_NAME")
+      PUBLIC_IP=$(get_public_ip)
 
-    if [[ -z "$DOMAIN_IP" || -z "$PUBLIC_IP" ]]; then
-      echo "DNS-Prüfung fehlgeschlagen. Bitte DNS und Internetzugang prüfen."
-      exit 1
-    fi
+      if [[ -z "$DOMAIN_IP" || -z "$PUBLIC_IP" ]]; then
+        echo "DNS-Prüfung fehlgeschlagen. Bitte DNS und Internetzugang prüfen."
+        exit 1
+      fi
 
-    if [[ "$DOMAIN_IP" != "$PUBLIC_IP" ]]; then
-      echo "DNS nicht korrekt gesetzt."
-      echo "Domain-IP: $DOMAIN_IP"
-      echo "Server-IP: $PUBLIC_IP"
-      exit 1
-    fi
+      if [[ "$DOMAIN_IP" != "$PUBLIC_IP" ]]; then
+        echo "DNS nicht korrekt gesetzt."
+        echo "Domain-IP: $DOMAIN_IP"
+        echo "Server-IP: $PUBLIC_IP"
+        exit 1
+      fi
 
-    read -r -p "E-Mail für Let's Encrypt: " CERTBOT_EMAIL
-    if [[ -z "$CERTBOT_EMAIL" ]]; then
-      echo "E-Mail fehlt. Abbruch."
-      exit 1
-    fi
+      read -r -p "E-Mail für Let's Encrypt: " CERTBOT_EMAIL
+      if [[ -z "$CERTBOT_EMAIL" ]]; then
+        echo "E-Mail fehlt. Abbruch."
+        exit 1
+      fi
 
-    ensure_root
-    install_nginx_certbot
-    configure_nginx "$DOMAIN_NAME" "$APP_DIR"
-    obtain_ssl_cert "$DOMAIN_NAME" "$CERTBOT_EMAIL"
+      ensure_root
+      install_nginx_certbot
+      configure_nginx "$DOMAIN_NAME" "$APP_DIR"
+      obtain_ssl_cert "$DOMAIN_NAME" "$CERTBOT_EMAIL"
 
-    set_env_key "CORS_ORIGIN" "https://${DOMAIN_NAME}"
+      set_env_key "CORS_ORIGIN" "https://${DOMAIN_NAME}"
 
-    if [[ -f "$PID_FILE" ]]; then
-      OLD_PID=$(cat "$PID_FILE" || true)
-      if [[ -n "${OLD_PID}" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
-        echo "Starte API-Server neu (PID $OLD_PID)"
-        kill "$OLD_PID"
-        sleep 2
-        nohup npm run server > "$LOG_DIR/server.log" 2>&1 &
-        NEW_PID=$!
-        echo "$NEW_PID" > "$PID_FILE"
-        echo "Neuer PID: $NEW_PID"
+      if [[ -f "$PID_FILE" ]]; then
+        OLD_PID=$(cat "$PID_FILE" || true)
+        if [[ -n "${OLD_PID}" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
+          echo "Starte API-Server neu (PID $OLD_PID)"
+          kill "$OLD_PID"
+          sleep 2
+          nohup npm run server > "$LOG_DIR/server.log" 2>&1 &
+          NEW_PID=$!
+          echo "$NEW_PID" > "$PID_FILE"
+          echo "Neuer PID: $NEW_PID"
+        fi
       fi
     fi
   fi
+else
+  echo "✓ Domain bereits konfiguriert. Überspringe Setup."
 fi
 
 echo "Tipp: Für Systemdienste nutze ./install_systemd.sh"
