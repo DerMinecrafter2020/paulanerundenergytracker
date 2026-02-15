@@ -7,6 +7,17 @@ PID_FILE="$APP_DIR/app.pid"
 
 mkdir -p "$LOG_DIR"
 
+ensure_root() {
+  if [[ $EUID -ne 0 ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo -v
+    else
+      echo "Root-Rechte fehlen (sudo nicht verfügbar)."
+      exit 1
+    fi
+  fi
+}
+
 install_node() {
   echo "Installiere Node.js und npm..."
   if command -v apt-get >/dev/null 2>&1; then
@@ -33,17 +44,6 @@ fi
 
 command -v node >/dev/null 2>&1 || { echo "Node.js fehlt"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
-
-ensure_root() {
-  if [[ $EUID -ne 0 ]]; then
-    if command -v sudo >/dev/null 2>&1; then
-      sudo -v
-    else
-      echo "Root-Rechte fehlen (sudo nicht verfügbar)."
-      exit 1
-    fi
-  fi
-}
 
 update_app() {
   if ! command -v git >/dev/null 2>&1; then
@@ -76,40 +76,7 @@ update_app() {
   echo "Update abgeschlossen."
 }
 
-update_script() {
-  local url="${SCRIPT_UPDATE_URL:-}"
-  if [[ -z "$url" || "$url" == *"_vscodecontentref_"* ]]; then
-    url="https://raw.githubusercontent.com/DerMinecrafter2020/paulanerundenergytracker/main/deploy.sh"
-  fi
 
-  local tmp_file
-  tmp_file=$(mktemp)
-
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url" -o "$tmp_file"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$tmp_file" "$url"
-  else
-    echo "curl/wget fehlt. Update nicht möglich."
-    rm -f "$tmp_file"
-    return 1
-  fi
-
-  if ! head -n1 "$tmp_file" | grep -q "^#!/usr/bin/env bash"; then
-    echo "Ungültiges Script. Update abgebrochen."
-    rm -f "$tmp_file"
-    return 1
-  fi
-
-  chmod +x "$tmp_file"
-  mv "$tmp_file" "$APP_DIR/deploy.sh"
-  echo "Script aktualisiert. Bitte erneut ausführen."
-  exit 0
-}
-
-if [[ "${1:-}" == "update" ]]; then
-  update_script
-fi
 
 if [[ ! -f ".env.local" ]]; then
   echo ".env.local fehlt. Bitte anlegen (siehe .env.example)."
@@ -123,15 +90,6 @@ read -r UPDATE_CHOICE
 
 if [[ "$UPDATE_CHOICE" == "1" ]]; then
   update_app || true
-fi
-
-echo "Script selbst aktualisieren?"
-echo "1) Ja"
-echo "2) Nein"
-read -r SCRIPT_UPDATE_CHOICE
-
-if [[ "$SCRIPT_UPDATE_CHOICE" == "1" ]]; then
-  update_script || true
 fi
 
 set_env_key() {
