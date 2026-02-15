@@ -1,0 +1,7 @@
+nohup: Eingabe wird ignoriert
+[DB] 📝 Betrieb im Speicher-Modus (DB_TYPE: local)
+🚀 API server running on http://localhost:3001
+📦 DB Type: local
+Error: ENOENT: no such file or directory, stat '/var/home/Cornelius/Dokumente/coding/paulanerundenergytracker/dist/index.html'
+Error: ENOENT: no such file or directory, stat '/var/home/Cornelius/Dokumente/coding/paulanerundenergytracker/dist/index.html'
+Error: ENOENT: no such file or directory, stat '/var/home/Cornelius/Dokumente/coding/paulanerundenergytracker/dist/index.html'
