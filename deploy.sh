@@ -15,28 +15,76 @@ is_container_running() {
   return 1  # Container läuft nicht
 }
 
+install_docker() {
+  echo "🔧 Installiere Docker..."
+  
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "  📦 Erkannt: Ubuntu/Debian"
+    sudo apt-get update -y
+    sudo apt-get install -y docker.io docker-compose
+  elif command -v dnf >/dev/null 2>&1; then
+    echo "  📦 Erkannt: Fedora"
+    sudo dnf install -y docker docker-compose
+  elif command -v yum >/dev/null 2>&1; then
+    echo "  📦 Erkannt: RHEL/CentOS"
+    sudo yum install -y docker docker-compose
+  elif command -v pacman >/dev/null 2>&1; then
+    echo "  📦 Erkannt: Arch"
+    sudo pacman -Sy --noconfirm docker docker-compose
+  else
+    echo "❌ Kein unterstützter Paketmanager gefunden!"
+    echo "Bitte installieren Sie Docker manuell: https://docs.docker.com/get-docker/"
+    exit 1
+  fi
+
+  echo "✅ Docker installiert"
+}
+
 ensure_docker() {
+  # Docker prüfen und installieren falls nötig
   if ! command -v docker >/dev/null 2>&1; then
-    echo "❌ Docker ist nicht installiert!"
-    echo "Bitte installieren Sie Docker:"
-    echo "  Ubuntu/Debian: sudo apt-get install -y docker.io docker-compose"
-    echo "  Fedora: sudo dnf install -y docker docker-compose"
-    exit 1
+    echo "❌ Docker ist nicht installiert"
+    ensure_root
+    install_docker
   fi
 
+  # Docker-Compose prüfen und installieren falls nötig
   if ! command -v docker-compose >/dev/null 2>&1; then
-    echo "❌ Docker Compose ist nicht installiert!"
-    echo "Bitte installieren Sie Docker Compose:"
-    echo "  Ubuntu/Debian: sudo apt-get install -y docker-compose"
-    echo "  Fedora: sudo dnf install -y docker-compose"
-    exit 1
+    echo "❌ Docker Compose ist nicht installiert"
+    ensure_root
+    
+    # Versuche neuere Docker-Version mit integriertem 'docker compose' zu verwenden
+    if docker compose version >/dev/null 2>&1; then
+      echo "✅ Nutze integriertes 'docker compose' (Docker 20.10+)"
+      # Erstelle Wrapper-Alias für docker-compose
+      sudo tee /usr/local/bin/docker-compose > /dev/null <<'EOF'
+#!/usr/bin/env bash
+docker compose "$@"
+EOF
+      sudo chmod +x /usr/local/bin/docker-compose
+    else
+      # Installiere docker-compose separat
+      echo "  📥 Installiere Docker Compose..."
+      sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+      sudo chmod +x /usr/local/bin/docker-compose
+      echo "✅ Docker Compose installiert"
+    fi
   fi
 
-  # Prüfe ob Docker-Daemon läuft
+  # Docker-Daemon starten
   if ! docker ps >/dev/null 2>&1; then
     echo "🔧 Starte Docker Daemon..."
     sudo systemctl start docker
     sudo systemctl enable docker
+    sleep 2
+  fi
+
+  # Finale Prüfung
+  if docker ps >/dev/null 2>&1; then
+    echo "✅ Docker ist bereit"
+  else
+    echo "❌ Docker konnte nicht gestartet werden"
+    exit 1
   fi
 }
 
@@ -237,6 +285,9 @@ obtain_ssl_cert() {
 echo "🐳 Koffein-Tracker Deployment mit Docker"
 echo "========================================="
 echo ""
+
+# Stelle sicher dass Docker installiert und bereit ist
+ensure_docker
 
 create_env_files
 
