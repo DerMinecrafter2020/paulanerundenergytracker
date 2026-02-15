@@ -1,0 +1,54 @@
+name: Build and Push to Docker Hub
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'DOCKER_HUB_GUIDE.md'
+      - 'GITHUB_ACTIONS_SETUP.md'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Extract version from package.json
+        id: version
+        run: |
+          VERSION=$(grep '"version"' package.json | sed 's/.*"version": "\([^"]*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/koffein-tracker:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/koffein-tracker:${{ steps.version.outputs.version }}
+          cache-from: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/koffein-tracker:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_HUB_USERNAME }}/koffein-tracker:buildcache,mode=max
+      
+      - name: Create deployment notice
+        run: |
+          echo "✅ Docker image successfully built and pushed to Docker Hub"
+          echo "Tags: latest, ${{ steps.version.outputs.version }}"
+          echo "Repository: https://hub.docker.com/r/${{ secrets.DOCKER_HUB_USERNAME }}/koffein-tracker"
