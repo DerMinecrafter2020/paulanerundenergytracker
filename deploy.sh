@@ -65,6 +65,46 @@ update_app() {
   echo "Update abgeschlossen."
 }
 
+update_script() {
+  local url="${SCRIPT_UPDATE_URL:-}"
+  if [[ -z "$url" ]]; then
+    read -r -p "URL für Script-Update: " url
+  fi
+
+  if [[ -z "$url" ]]; then
+    url="https://raw.githubusercontent.com/DerMinecrafter2020/paulanerundenergytracker/main/deploy.sh"
+  fi
+
+  if [[ -z "$url" ]]; then
+    echo "Keine URL angegeben. Update abgebrochen."
+    return 1
+  fi
+
+  local tmp_file
+  tmp_file=$(mktemp)
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$tmp_file"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$tmp_file" "$url"
+  else
+    echo "curl/wget fehlt. Update nicht möglich."
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  if ! head -n1 "$tmp_file" | grep -q "^#!/usr/bin/env bash"; then
+    echo "Ungültiges Script. Update abgebrochen."
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  chmod +x "$tmp_file"
+  mv "$tmp_file" "$APP_DIR/deploy.sh"
+  echo "Script aktualisiert. Bitte erneut ausführen."
+  exit 0
+}
+
 if [[ ! -f ".env.local" ]]; then
   echo ".env.local fehlt. Bitte anlegen (siehe .env.example)."
   exit 1
@@ -77,6 +117,15 @@ read -r UPDATE_CHOICE
 
 if [[ "$UPDATE_CHOICE" == "1" ]]; then
   update_app || true
+fi
+
+echo "Script selbst aktualisieren?"
+echo "1) Ja"
+echo "2) Nein"
+read -r SCRIPT_UPDATE_CHOICE
+
+if [[ "$SCRIPT_UPDATE_CHOICE" == "1" ]]; then
+  update_script || true
 fi
 
 set_env_key() {
