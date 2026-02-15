@@ -29,15 +29,20 @@ fi
 # Frage nach Docker Hub Username
 read -p "Docker Hub Username: " DOCKER_USER
 
-# Prüfe ob Docker Compose existiert
-if [[ ! -f "docker-compose.yml" ]]; then
-  echo -e "${RED}❌ docker-compose.yml nicht gefunden${NC}"
+# Prüfe ob package.json existiert
+if [[ ! -f "package.json" ]]; then
+  echo -e "${RED}❌ package.json nicht gefunden${NC}"
   exit 1
 fi
 
-# Extrahiere Image Namen aus docker-compose.yml
+# Extrahiere Version aus package.json
+VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/')
+if [[ -z "$VERSION" ]]; then
+  VERSION="latest"
+fi
+
+# Image Namen
 IMAGE_NAME="${DOCKER_USER}/koffein-tracker"
-VERSION=$(grep "version:" docker-compose.yml | head -1 | awk '{print $2}' || echo "1.0.0")
 
 echo ""
 echo -e "${YELLOW}📦 Image Details:${NC}"
