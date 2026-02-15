@@ -7,6 +7,30 @@ PID_FILE="$APP_DIR/app.pid"
 
 mkdir -p "$LOG_DIR"
 
+install_node() {
+  echo "Installiere Node.js und npm..."
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update -y
+    sudo apt-get install -y curl ca-certificates gnupg
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y nodejs npm
+  elif command -v yum >/dev/null 2>&1; then
+    sudo yum install -y nodejs npm
+  elif command -v pacman >/dev/null 2>&1; then
+    sudo pacman -Sy --noconfirm nodejs npm
+  else
+    echo "Kein unterstützter Paketmanager gefunden. Bitte Node.js manuell installieren."
+    exit 1
+  fi
+}
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  ensure_root
+  install_node
+fi
+
 command -v node >/dev/null 2>&1 || { echo "Node.js fehlt"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
 
