@@ -9,7 +9,7 @@ import {
   onSnapshot,
   serverTimestamp 
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from '../firebase';
 
 // App-ID für die Firestore-Struktur
 const APP_ID = 'caffeine-tracker';

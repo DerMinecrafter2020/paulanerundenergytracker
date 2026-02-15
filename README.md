@@ -68,6 +68,86 @@ Eine moderne Web-Anwendung zum Protokollieren des täglichen Koffeinkonsums durc
    npm run dev
    ```
 
+## 🖥️ Server-Installation (Produktivbetrieb)
+
+### Voraussetzungen
+
+- Node.js 18+ und npm
+- MySQL/MariaDB Datenbank
+- (Optional) Nginx als Reverse Proxy
+
+### 1) Abhängigkeiten installieren
+
+```bash
+npm install
+```
+
+### 2) Datenbank anlegen
+
+```sql
+CREATE DATABASE caffeine_tracker CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+### 3) Umgebungsvariablen setzen
+
+```bash
+cp .env.example .env.local
+```
+
+Trage die Werte in `.env.local` ein (Beispiel):
+
+```
+VITE_API_BASE_URL=https://dein-server.de
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=caffeine
+MYSQL_PASSWORD=geheim
+MYSQL_DATABASE=caffeine_tracker
+CORS_ORIGIN=https://dein-frontend.de
+PORT=3001
+```
+
+### 4) Backend (API) starten
+
+```bash
+npm run server
+```
+
+Der Server erstellt die Tabelle automatisch beim Start.
+
+### 5) Frontend bauen
+
+```bash
+npm run build
+```
+
+Die fertigen Dateien liegen in `dist/` und können über Nginx oder einen Static-Server ausgeliefert werden.
+
+### 6) Nginx (Beispiel)
+
+```nginx
+server {
+   listen 80;
+   server_name dein-frontend.de;
+
+   root /pfad/zur/app/dist;
+   index index.html;
+
+   location / {
+      try_files $uri /index.html;
+   }
+
+   location /api/ {
+      proxy_pass http://127.0.0.1:3001/;
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+   }
+}
+```
+
 ## 📁 Projektstruktur
 
 ```

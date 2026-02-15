@@ -2,51 +2,34 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Header from './components/Header';
 import ProgressBar from './components/ProgressBar';
 import PresetDrinks from './components/PresetDrinks';
+import OnlineSearch from './components/OnlineSearch';
 import ManualCalculator from './components/ManualCalculator';
 import DrinkHistory from './components/DrinkHistory';
-import { signInAnonymouslyUser, onAuthChange } from './firebase';
-import { 
-  addCaffeineLog, 
-  deleteCaffeineLog, 
-  subscribeToTodayLogs 
-} from './services/caffeineService';
+import { fetchLogs, createLog, deleteLog } from './services/api';
+
+const getTodayKey = () => new Date().toISOString().split('T')[0];
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isOperationLoading, setIsOperationLoading] = useState(false);
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState(null);
+  const [manualPrefill, setManualPrefill] = useState(null);
 
-  // Authentifizierung initialisieren
+  // Logs für heute laden (lokal)
   useEffect(() => {
-    const unsubscribe = onAuthChange(async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        setIsAuthLoading(false);
-      } else {
-        try {
-          await signInAnonymouslyUser();
-        } catch (err) {
-          setError('Fehler bei der Verbindung. Bitte lade die Seite neu.');
-          setIsAuthLoading(false);
-        }
+    const loadToday = async () => {
+      try {
+        const today = getTodayKey();
+        const todayLogs = await fetchLogs(today);
+        setLogs(todayLogs);
+      } catch (err) {
+        setError('Fehler beim Laden der Daten. Starte den API-Server?');
+        console.error(err);
       }
-    });
+    };
 
-    return () => unsubscribe();
+    loadToday();
   }, []);
-
-  // Logs abonnieren wenn User authentifiziert ist
-  useEffect(() => {
-    if (!user) return;
-
-    const unsubscribe = subscribeToTodayLogs(user.uid, (todayLogs) => {
-      setLogs(todayLogs);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
 
   // Gesamtes Koffein für heute berechnen
   const totalCaffeineToday = useMemo(() => {
@@ -55,43 +38,45 @@ function App() {
 
   // Getränk hinzufügen
   const handleAddDrink = useCallback(async (drinkData) => {
-    if (!user) return;
-
     setIsOperationLoading(true);
     setError(null);
 
     try {
-      await addCaffeineLog(user.uid, drinkData);
+      const payload = {
+        ...drinkData,
+        date: getTodayKey(),
+      };
+      const created = await createLog(payload);
+      setLogs((prev) => [created, ...prev]);
     } catch (err) {
       setError('Fehler beim Hinzufügen. Bitte versuche es erneut.');
       console.error(err);
     } finally {
       setIsOperationLoading(false);
     }
-  }, [user]);
+  }, []);
 
   // Eintrag löschen
   const handleDeleteLog = useCallback(async (logId) => {
-    if (!user) return;
-
     setIsOperationLoading(true);
     setError(null);
 
     try {
-      await deleteCaffeineLog(user.uid, logId);
+      await deleteLog(logId);
+      setLogs((prev) => prev.filter((log) => log.id !== logId));
     } catch (err) {
       setError('Fehler beim Löschen. Bitte versuche es erneut.');
       console.error(err);
     } finally {
       setIsOperationLoading(false);
     }
-  }, [user]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Header 
-        isAuthenticated={!!user} 
-        isLoading={isAuthLoading || isOperationLoading} 
+        isAuthenticated={true} 
+        isLoading={isOperationLoading} 
       />
 
       <main className="max-w-lg mx-auto px-4 pb-8">
@@ -115,13 +100,26 @@ function App() {
         {/* Preset Getränke */}
         <PresetDrinks 
           onAddDrink={handleAddDrink} 
-          isLoading={isOperationLoading || !user}
+          isLoading={isOperationLoading}
+        />
+
+        {/* Online-Suche */}
+        <OnlineSearch
+          onSelect={(item) =>
+            setManualPrefill({
+              name: item.name,
+              caffeinePer100ml: item.caffeinePer100ml,
+              sizeMl: item.sizeMl,
+            })
+          }
         />
 
         {/* Manueller Rechner */}
         <ManualCalculator 
           onAddDrink={handleAddDrink} 
-          isLoading={isOperationLoading || !user}
+          isLoading={isOperationLoading}
+          prefill={manualPrefill}
+          onPrefillApplied={() => setManualPrefill(null)}
         />
 
         {/* Verlauf */}

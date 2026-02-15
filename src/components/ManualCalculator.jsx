@@ -1,11 +1,27 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Calculator, Plus } from 'lucide-react';
 import { DRINK_SIZES, calculateFromPer100ml } from '../utils/caffeineUtils';
 
-const ManualCalculator = ({ onAddDrink, isLoading }) => {
+const ManualCalculator = ({ onAddDrink, isLoading, prefill, onPrefillApplied }) => {
   const [drinkName, setDrinkName] = useState('');
   const [caffeinePer100ml, setCaffeinePer100ml] = useState(32);
   const [selectedSize, setSelectedSize] = useState(250);
+
+  useEffect(() => {
+    if (!prefill) return;
+
+    if (prefill.name) setDrinkName(prefill.name);
+    if (typeof prefill.caffeinePer100ml === 'number') {
+      setCaffeinePer100ml(prefill.caffeinePer100ml);
+    }
+    if (typeof prefill.sizeMl === 'number') {
+      setSelectedSize(prefill.sizeMl);
+    }
+
+    if (onPrefillApplied) {
+      onPrefillApplied();
+    }
+  }, [prefill, onPrefillApplied]);
 
   // Automatische Berechnung der Gesamtdosis
   const totalCaffeine = useMemo(() => {
@@ -100,6 +116,11 @@ const ManualCalculator = ({ onAddDrink, isLoading }) => {
                 {size.label}
               </button>
             ))}
+            {!DRINK_SIZES.some((size) => size.value === selectedSize) && (
+              <div className="flex-1 py-3 px-4 rounded-xl font-medium bg-slate-100 text-slate-600 text-center">
+                {selectedSize} ml
+              </div>
+            )}
           </div>
         </div>
 

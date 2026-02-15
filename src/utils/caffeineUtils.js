@@ -46,6 +46,24 @@ export const PRESET_DRINKS = [
     color: 'bg-yellow-500'
   },
   {
+    id: 'goenrgy-500',
+    name: 'Gönrgy',
+    size: 500,
+    caffeinePerMl: 0.32,
+    totalCaffeine: 160,
+    icon: '⚡',
+    color: 'bg-indigo-500'
+  },
+  {
+    id: 'holy-500',
+    name: 'Holy Energy',
+    size: 500,
+    caffeinePerMl: 0.32,
+    totalCaffeine: 160,
+    icon: '✨',
+    color: 'bg-purple-500'
+  },
+  {
     id: 'mate-500',
     name: 'Club Mate',
     size: 500,
