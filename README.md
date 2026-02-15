@@ -16,204 +16,110 @@ Eine moderne Web-Anwendung zum Protokollieren des täglichen Koffeinkonsums durc
 - 📝 **Verlaufsprotokoll** - Sieh alle heutigen Einträge
 - ☁️ **Cloud-Sync** - Deine Daten werden sicher in Firebase gespeichert
 - 📱 **Mobile-First** - Optimiert für Smartphones
-- 🚫 **Keine Installation** - Single HTML File
 
-## 🚀 Quick Start
+## 🛠️ Technologie-Stack
 
-### Option 1: Direkt nutzen
-1. `caffeine-tracker.html` herunterladen
-2. Im Browser öffnen
-3. Loslegen! 🎉
+- **Frontend:** React 18 + Vite
+- **Styling:** Tailwind CSS
+- **Backend:** Firebase (Auth & Firestore)
+- **Icons:** Lucide React
 
-### Option 2: GitHub Pages
-1. Repository forken
-2. Settings → Pages → Source: main
-3. Verfügbar unter: `https://USERNAME.github.io/REPO-NAME/caffeine-tracker.html`
+## 🚀 Installation
 
-## 📸 Screenshots
+1. **Repository klonen und Dependencies installieren:**
+   ```bash
+   npm install
+   ```
 
-### Dashboard
-![Dashboard mit Statistiken](https://via.placeholder.com/800x400/667eea/FFFFFF?text=Dashboard+Screenshot)
+2. **Firebase-Projekt einrichten:**
+   - Erstelle ein neues Projekt auf [Firebase Console](https://console.firebase.google.com/)
+   - Aktiviere "Anonymous Authentication"
+   - Erstelle eine Firestore-Datenbank
+   - Kopiere deine Firebase-Konfiguration
 
-### Visuelle Suche
-![Getränke-Suche mit Grid](https://via.placeholder.com/800x400/667eea/FFFFFF?text=Suche+Screenshot)
+3. **Umgebungsvariablen konfigurieren:**
+   ```bash
+   cp .env.example .env.local
+   ```
+   Fülle dann die Werte in `.env.local` aus:
+   ```
+   VITE_FIREBASE_API_KEY=dein_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=dein_projekt.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=dein_projekt_id
+   VITE_FIREBASE_STORAGE_BUCKET=dein_projekt.appspot.com
+   VITE_FIREBASE_MESSAGING_SENDER_ID=deine_sender_id
+   VITE_FIREBASE_APP_ID=deine_app_id
+   ```
 
-### Mobile View
-![Mobile Ansicht](https://via.placeholder.com/400x800/667eea/FFFFFF?text=Mobile+Screenshot)
+4. **Firestore-Regeln einrichten:**
+   ```javascript
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /artifacts/{appId}/users/{userId}/{document=**} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
+       }
+     }
+   }
+   ```
 
-## 🥤 Getränke-Datenbank
+5. **Entwicklungsserver starten:**
+   ```bash
+   npm run dev
+   ```
 
-### Energy Drinks
-- **Deutsche Marken**: Red Bull, Monster, Effect, 28 Black, Booster, Flying Horse, Gönergy
-- **Internationale**: Rockstar, Bang, Celsius, Prime, Reign, C4, Nocco
-- **Koffein**: 24-67mg/100ml
-
-### Limonaden
-- **Deutsche**: Paulaner Spezi, Club Mate, Fritz Kola, Afri Cola, Vita Cola
-- **Internationale**: Coca-Cola, Pepsi
-- **Koffein**: 8-25mg/100ml
-
-## 🎨 Features im Detail
-
-### 1. Dashboard
-- Koffein heute/Woche/Monat
-- Anzahl Drinks heute
-- 7-Tage-Balkendiagramm
-- Farbcodierte Warnungen
-
-### 2. Eingabe-Methoden
-- 🔍 **Visuelle Suche** - Modal mit Grid-Layout
-- ⌨️ **Autocomplete** - Live-Vorschläge während Eingabe
-- 🎯 **Schnellauswahl** - Beliebte Drinks als Chips
-- ✍️ **Manuell** - Eigene Werte eingeben
-
-### 3. Filter & Suche
-- Nach Land: 🇩🇪 🇺🇸 🇦🇹
-- Nach Typ: Energy Drinks / Limonaden
-- Live-Suche nach Name/Marke
-
-### 4. Historie
-- Alle heutigen Einträge
-- Mit Uhrzeit & Details
-- Lösch-Funktion
-
-## 💻 Technologie
+## 📁 Projektstruktur
 
 ```
-HTML5 + CSS3 + Vanilla JavaScript
-├── Keine Frameworks
-├── Keine Dependencies
-├── Single File App
-└── Offline-fähig
+src/
+├── components/
+│   ├── Header.jsx         # App-Header mit Datum
+│   ├── ProgressBar.jsx    # Fortschrittsbalken & Status
+│   ├── PresetDrinks.jsx   # Schnell-Buttons für Getränke
+│   ├── ManualCalculator.jsx # Manueller Koffein-Rechner
+│   └── DrinkHistory.jsx   # Verlaufsliste
+├── services/
+│   └── caffeineService.js # Firebase Firestore-Operationen
+├── utils/
+│   └── caffeineUtils.js   # Hilfsfunktionen & Konstanten
+├── firebase.js            # Firebase-Konfiguration
+├── App.jsx                # Haupt-App-Komponente
+├── main.jsx               # Entry Point
+└── index.css              # Globale Styles
 ```
 
-### Code-Struktur
-- **HTML**: Semantic Markup
-- **CSS**: Flexbox + Grid, Custom Properties
-- **JavaScript**: ES6+, Storage API
-- **Datenspeicherung**: window.storage (persistent)
+## 🚦 Koffein-Grenzwerte
 
-## 📊 Datenstruktur
+- **Grün (0-74%):** Sicherer Bereich
+- **Orange (75-99%):** Nähert sich dem Limit
+- **Rot (100%+):** Tageslimit überschritten
 
-```javascript
-{
-  id: 1708086000000,
-  name: "Red Bull",
-  caffeinePer100ml: 32,
-  size: 250,
-  totalCaffeine: 80,
-  timestamp: "2026-02-15T10:30:00.000Z"
-}
-```
+Das empfohlene Tageslimit beträgt **400 mg Koffein** für gesunde Erwachsene.
 
-## ⚙️ Installation & Deployment
+## 🥤 Verfügbare Presets
 
-### Lokal
-```bash
-# Einfach öffnen
-open caffeine-tracker.html
-```
+| Getränk | Größe | Koffein |
+|---------|-------|---------|
+| Red Bull | 250 ml | 80 mg |
+| Monster Energy | 500 ml | 160 mg |
+| Kaffee | 200 ml | 80 mg |
+| Espresso | 30 ml | 63 mg |
+| Rockstar | 500 ml | 160 mg |
+| Club Mate | 500 ml | 100 mg |
 
-### GitHub Pages
-```bash
-# Repository erstellen
-git init
-git add caffeine-tracker.html
-git commit -m "Initial commit"
-git remote add origin https://github.com/USERNAME/caffeine-tracker.git
-git push -u origin main
+## 📜 Scripts
 
-# GitHub Pages in Settings aktivieren
-```
-
-### Webhosting
-```bash
-# Auf beliebigen Webserver hochladen
-# Keine Backend-Anforderungen!
-```
-
-## 🔒 Datenschutz
-
-✅ Alle Daten bleiben auf deinem Gerät  
-✅ Keine Server-Kommunikation  
-✅ Keine Cookies  
-✅ Keine persönlichen Daten erforderlich  
-✅ Kein Login notwendig  
-
-## 🤝 Contributing
-
-Beiträge sind willkommen! 
-
-### Wie beitragen?
-1. Fork das Repository
-2. Feature-Branch erstellen (`git checkout -b feature/AmazingFeature`)
-3. Änderungen committen (`git commit -m 'Add some AmazingFeature'`)
-4. Branch pushen (`git push origin feature/AmazingFeature`)
-5. Pull Request öffnen
-
-### Gewünschte Beiträge
-- ✨ Neue Getränke zur Datenbank
-- 🐛 Bug-Fixes
-- 🎨 UI-Verbesserungen
-- 🌍 Übersetzungen
-- ⚡ Performance-Optimierungen
-
-## 📋 Roadmap
-
-### Geplante Features
-- [ ] Export als CSV/PDF
-- [ ] Dark Mode
-- [ ] PWA (Progressive Web App)
-- [ ] Barcode-Scanner
-- [ ] Mehrsprachigkeit
-- [ ] Wochenberichte
-- [ ] Kosten-Tracking
-- [ ] Custom Drinks
-- [ ] Sharing-Funktionen
-- [ ] Reminder-Funktion
-
-## 🐛 Bug Reports
-
-Probleme gefunden? [Issue erstellen](https://github.com/USERNAME/REPO/issues)
-
-## 📄 Lizenz
-
-MIT License - Frei verwendbar für private und kommerzielle Zwecke
-
-```
-Copyright (c) 2026
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software...
-```
+- `npm run dev` - Startet den Entwicklungsserver
+- `npm run build` - Erstellt einen Production Build
+- `npm run preview` - Vorschau des Production Builds
 
 ## ⚠️ Disclaimer
 
-Diese App dient nur zu Informationszwecken. Die Koffeindaten basieren auf Herstellerangaben und können variieren. Bei gesundheitlichen Bedenken konsultiere bitte einen Arzt. Die empfohlene Tagesdosis von **400mg Koffein** sollte nicht überschritten werden.
+Diese App dient nur zu Informationszwecken. Die Koffeindaten basieren auf Herstellerangaben und können variieren. Bei gesundheitlichen Bedenken konsultiere bitte einen Arzt.
 
-## 🙏 Credits
+## 📄 Lizenz
 
-Entwickelt mit ❤️ und ☕
-
-**Technologien:**
-- Vanilla JavaScript
-- CSS3 Grid & Flexbox
-- HTML5 Storage API
-- Placeholder.com für Produktbilder
-
-**Inspiriert von:**
-- Gesundheitsbewussten Energy Drink Fans
-- Fitness-Tracker Apps
-- Material Design
-
-## 📞 Kontakt & Support
-
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/USERNAME/REPO/issues)
-- 💡 **Feature Requests**: [GitHub Discussions](https://github.com/USERNAME/REPO/discussions)
-- ⭐ **Star das Projekt** wenn es dir gefällt!
+MIT License
 
 ---
 
