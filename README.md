@@ -148,6 +148,24 @@ server {
 }
 ```
 
+## ⚙️ systemd (Empfohlen für Server)
+
+1) Projekt auf den Server kopieren (z. B. nach `/opt/koffein-tracker`).
+
+2) Service installieren und starten:
+
+```bash
+sudo ./install_systemd.sh
+```
+
+3) Status prüfen:
+
+```bash
+systemctl status energy-tracker.service
+```
+
+Der Service startet automatisch nach einem Neustart.
+
 
 ## 📁 Projektstruktur
 
