@@ -193,6 +193,7 @@ install_nginx_certbot() {
 
 configure_nginx() {
   local domain="$1"
+  local app_dir="$2"
   local config_path="/etc/nginx/conf.d/koffein-tracker.conf"
 
   sudo tee "$config_path" >/dev/null <<EOF
@@ -200,8 +201,29 @@ server {
   listen 80;
   server_name ${domain};
 
+  # Frontend - statische Dateien
   location / {
-    proxy_pass http://127.0.0.1:3001;
+    root ${app_dir}/dist;
+    try_files \$uri \$uri/ /index.html;
+    expires 1h;
+    add_header Cache-Control "public, max-age=3600";
+  }
+
+  # API Backend
+  location /api/ {
+    proxy_pass http://localhost:3001/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_buffering off;
+    proxy_request_buffering off;
+  }
+
+  # Für API Endpoints ohne /api/ prefix
+  location /version {
+    proxy_pass http://localhost:3001;
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
     proxy_set_header X-Real-IP \$remote_addr;
@@ -211,7 +233,7 @@ server {
 }
 EOF
 
-  sudo nginx -t
+  sudo nginx -t || { echo "Nginx Konfiguration fehlerhaft!"; exit 1; }
   sudo systemctl enable --now nginx
   sudo systemctl reload nginx
 }
@@ -326,7 +348,7 @@ if [[ "$DOMAIN_CHOICE" == "1" ]]; then
 
     ensure_root
     install_nginx_certbot
-    configure_nginx "$DOMAIN_NAME"
+    configure_nginx "$DOMAIN_NAME" "$APP_DIR"
     obtain_ssl_cert "$DOMAIN_NAME" "$CERTBOT_EMAIL"
 
     set_env_key "CORS_ORIGIN" "https://${DOMAIN_NAME}"
