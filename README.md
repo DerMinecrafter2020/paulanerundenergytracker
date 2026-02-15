@@ -148,30 +148,6 @@ server {
 }
 ```
 
-## 🐳 Docker (Empfohlen)
-
-### Schnellstart
-
-```bash
-docker compose up -d --build
-```
-
-Die App läuft danach unter http://localhost:3001
-
-### Services
-
-- **app**: Node.js API + statisches Frontend
-- **db**: MySQL 8.4 mit persistenter Datenbank
-
-### Konfiguration
-
-Die Standardwerte sind in [docker-compose.yml](docker-compose.yml) hinterlegt. Bei Bedarf kannst du Benutzer, Passwörter und Ports dort anpassen.
-
-### Stoppen
-
-```bash
-docker compose down
-```
 
 ## 📁 Projektstruktur
 
