@@ -45,6 +45,55 @@ fi
 command -v node >/dev/null 2>&1 || { echo "Node.js fehlt"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
 
+create_env_files() {
+  local env_example=".env.example"
+  local env_local=".env.local"
+  
+  if [[ ! -f "$env_example" ]]; then
+    echo "Erstelle $env_example..."
+    cat > "$env_example" << 'EOF'
+# Firebase Konfiguration - kopiere diese Datei zu .env.local und fülle die Werte aus
+VITE_FIREBASE_API_KEY=your_api_key_here
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+
+# API Base URL (MySQL Backend)
+VITE_API_BASE_URL=http://localhost:3001
+
+# Datenbank-Auswahl: mysql | influx
+DB_TYPE=mysql
+
+# MySQL Server (Backend)
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=caffeine_tracker
+
+# InfluxDB Server (Backend)
+INFLUX_URL=http://localhost:8086
+INFLUX_TOKEN=your_influx_token
+INFLUX_ORG=your_org
+INFLUX_BUCKET=your_bucket
+
+# CORS Origin for API
+CORS_ORIGIN=http://localhost:5173
+
+# API Server Port
+PORT=3001
+EOF
+  fi
+  
+  if [[ ! -f "$env_local" ]]; then
+    echo "Erstelle $env_local aus $env_example..."
+    cp "$env_example" "$env_local"
+    echo "⚠️  Bitte .env.local mit Ihren Werten konfigurieren!"
+  fi
+}
+
 update_app() {
   if ! command -v git >/dev/null 2>&1; then
     echo "git fehlt. Update nicht möglich."
@@ -78,10 +127,7 @@ update_app() {
 
 
 
-if [[ ! -f ".env.local" ]]; then
-  echo ".env.local fehlt. Bitte anlegen (siehe .env.example)."
-  exit 1
-fi
+create_env_files
 
 echo "Update prüfen und installieren?"
 echo "1) Ja"
