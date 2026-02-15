@@ -2,6 +2,7 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$APP_DIR"  # Stelle sicher, dass wir immer im richtigen Verzeichnis sind
 LOG_DIR="$APP_DIR/logs"
 PID_FILE="$APP_DIR/app.pid"
 
