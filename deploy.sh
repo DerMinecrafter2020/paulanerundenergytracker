@@ -34,6 +34,17 @@ fi
 command -v node >/dev/null 2>&1 || { echo "Node.js fehlt"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm fehlt"; exit 1; }
 
+ensure_root() {
+  if [[ $EUID -ne 0 ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo -v
+    else
+      echo "Root-Rechte fehlen (sudo nicht verfügbar)."
+      exit 1
+    fi
+  fi
+}
+
 update_app() {
   if ! command -v git >/dev/null 2>&1; then
     echo "git fehlt. Update nicht möglich."
@@ -156,17 +167,6 @@ resolve_domain_ip() {
     dig +short A "$domain" | head -n1
   else
     echo ""
-  fi
-}
-
-ensure_root() {
-  if [[ $EUID -ne 0 ]]; then
-    if command -v sudo >/dev/null 2>&1; then
-      sudo -v
-    else
-      echo "Root-Rechte fehlen (sudo nicht verfügbar)."
-      exit 1
-    fi
   fi
 }
 
