@@ -78,17 +78,8 @@ update_app() {
 
 update_script() {
   local url="${SCRIPT_UPDATE_URL:-}"
-  if [[ -z "$url" ]]; then
-    read -r -p "URL für Script-Update: " url
-  fi
-
-  if [[ -z "$url" ]]; then
+  if [[ -z "$url" || "$url" == *"_vscodecontentref_"* ]]; then
     url="https://raw.githubusercontent.com/DerMinecrafter2020/paulanerundenergytracker/main/deploy.sh"
-  fi
-
-  if [[ -z "$url" ]]; then
-    echo "Keine URL angegeben. Update abgebrochen."
-    return 1
   fi
 
   local tmp_file
@@ -115,6 +106,10 @@ update_script() {
   echo "Script aktualisiert. Bitte erneut ausführen."
   exit 0
 }
+
+if [[ "${1:-}" == "update" ]]; then
+  update_script
+fi
 
 if [[ ! -f ".env.local" ]]; then
   echo ".env.local fehlt. Bitte anlegen (siehe .env.example)."
