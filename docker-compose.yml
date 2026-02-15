@@ -17,7 +17,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
       - PORT=3001
     volumes:
-      - ./.env.local:/app/.env.local:ro
+      - /root/energytracker/.env.local:/app/.env.local:ro
     restart: unless-stopped
     networks:
       - koffein-network
