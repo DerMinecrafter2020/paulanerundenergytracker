@@ -3,64 +3,50 @@ import { Calculator, Plus } from 'lucide-react';
 import { DRINK_SIZES, calculateFromPer100ml } from '../utils/caffeineUtils';
 
 const ManualCalculator = ({ onAddDrink, isLoading, prefill, onPrefillApplied }) => {
-  const [drinkName, setDrinkName] = useState('');
+  const [drinkName, setDrinkName]           = useState('');
   const [caffeinePer100ml, setCaffeinePer100ml] = useState(32);
-  const [selectedSize, setSelectedSize] = useState(250);
+  const [selectedSize, setSelectedSize]     = useState(250);
 
   useEffect(() => {
     if (!prefill) return;
-
     if (prefill.name) setDrinkName(prefill.name);
-    if (typeof prefill.caffeinePer100ml === 'number') {
-      setCaffeinePer100ml(prefill.caffeinePer100ml);
-    }
-    if (typeof prefill.sizeMl === 'number') {
-      setSelectedSize(prefill.sizeMl);
-    }
-
-    if (onPrefillApplied) {
-      onPrefillApplied();
-    }
+    if (typeof prefill.caffeinePer100ml === 'number') setCaffeinePer100ml(prefill.caffeinePer100ml);
+    if (typeof prefill.sizeMl === 'number') setSelectedSize(prefill.sizeMl);
+    if (onPrefillApplied) onPrefillApplied();
   }, [prefill, onPrefillApplied]);
 
-  // Automatische Berechnung der Gesamtdosis
-  const totalCaffeine = useMemo(() => {
-    return calculateFromPer100ml(caffeinePer100ml, selectedSize);
-  }, [caffeinePer100ml, selectedSize]);
+  const totalCaffeine = useMemo(
+    () => calculateFromPer100ml(caffeinePer100ml, selectedSize),
+    [caffeinePer100ml, selectedSize]
+  );
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    if (!drinkName.trim()) {
-      return;
-    }
-
+    if (!drinkName.trim()) return;
     onAddDrink({
       name: drinkName.trim(),
       size: selectedSize,
       caffeine: totalCaffeine,
       caffeinePerMl: caffeinePer100ml / 100,
       icon: '🥤',
-      isPreset: false
+      isPreset: false,
     });
-
-    // Formular zurücksetzen
     setDrinkName('');
     setCaffeinePer100ml(32);
     setSelectedSize(250);
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-lg p-6 mb-6 animate-fade-in">
-      <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-        <Calculator className="w-5 h-5 text-energy-yellow" />
+    <div className="glass-card rounded-3xl p-6 mb-6 animate-fade-in">
+      <h3 className="text-base font-bold text-white mb-5 flex items-center gap-2">
+        <Calculator className="w-5 h-5 text-amber-400" />
         Manueller Rechner
       </h3>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Getränkename */}
+        {/* Name */}
         <div>
-          <label className="block text-sm font-medium text-slate-600 mb-2">
+          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Getränkename
           </label>
           <input
@@ -68,16 +54,14 @@ const ManualCalculator = ({ onAddDrink, isLoading, prefill, onPrefillApplied }) 
             value={drinkName}
             onChange={(e) => setDrinkName(e.target.value)}
             placeholder="z.B. Energy Drink XYZ"
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 
-              focus:outline-none focus:ring-2 focus:ring-energy-blue focus:border-transparent
-              transition-all duration-200"
+            className="input-dark"
           />
         </div>
 
-        {/* Koffeingehalt pro 100ml */}
+        {/* Koffein/100ml */}
         <div>
-          <label className="block text-sm font-medium text-slate-600 mb-2">
-            Koffeingehalt pro 100 ml
+          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Koffein pro 100 ml
           </label>
           <div className="relative">
             <input
@@ -86,62 +70,62 @@ const ManualCalculator = ({ onAddDrink, isLoading, prefill, onPrefillApplied }) 
               onChange={(e) => setCaffeinePer100ml(Math.max(0, Number(e.target.value)))}
               min="0"
               max="500"
-              className="w-full px-4 py-3 pr-16 rounded-xl border border-slate-200 
-                focus:outline-none focus:ring-2 focus:ring-energy-blue focus:border-transparent
-                transition-all duration-200"
+              className="input-dark pr-12"
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium text-sm">
               mg
             </span>
           </div>
         </div>
 
-        {/* Dosengröße */}
+        {/* Size buttons */}
         <div>
-          <label className="block text-sm font-medium text-slate-600 mb-2">
+          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Dosengröße
           </label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {DRINK_SIZES.map((size) => (
               <button
                 key={size.value}
                 type="button"
                 onClick={() => setSelectedSize(size.value)}
-                className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-200
-                  ${selectedSize === size.value 
-                    ? 'bg-energy-blue text-white shadow-md' 
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                className={`flex-1 min-w-0 py-2.5 px-3 rounded-xl font-medium transition-all duration-200 text-sm
+                  ${selectedSize === size.value
+                    ? 'bg-blue-600 text-white shadow-glow-blue'
+                    : 'bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10'
                   }`}
               >
                 {size.label}
               </button>
             ))}
-            {!DRINK_SIZES.some((size) => size.value === selectedSize) && (
-              <div className="flex-1 py-3 px-4 rounded-xl font-medium bg-slate-100 text-slate-600 text-center">
+            {!DRINK_SIZES.some((s) => s.value === selectedSize) && (
+              <div className="flex-1 py-2.5 px-3 rounded-xl text-sm bg-white/5 text-slate-400 text-center border border-white/10">
                 {selectedSize} ml
               </div>
             )}
           </div>
         </div>
 
-        {/* Berechnete Gesamtdosis */}
-        <div className="bg-gradient-to-r from-slate-50 to-slate-100 rounded-2xl p-4">
-          <div className="flex justify-between items-center">
-            <span className="text-slate-600 font-medium">Gesamtdosis:</span>
-            <span className="text-2xl font-bold text-energy-blue">
-              {totalCaffeine} mg
-            </span>
+        {/* Total dose preview */}
+        <div className="flex justify-between items-center px-4 py-3.5 rounded-2xl
+          bg-gradient-to-r from-blue-600/10 to-amber-500/10 border border-white/10">
+          <span className="text-slate-400 font-medium text-sm">Gesamtdosis:</span>
+          <div>
+            <span className="text-2xl font-bold text-gradient">{totalCaffeine}</span>
+            <span className="text-sm text-slate-500 ml-1">mg</span>
           </div>
         </div>
 
-        {/* Submit Button */}
+        {/* Submit */}
         <button
           type="submit"
           disabled={!drinkName.trim() || isLoading}
-          className="w-full bg-gradient-to-r from-energy-yellow to-energy-blue 
-            text-white font-bold py-4 px-6 rounded-2xl
-            hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed
-            transition-all duration-200 shadow-lg hover:shadow-xl
+          className="w-full bg-gradient-to-r from-blue-600 to-amber-500
+            text-white font-bold py-3.5 px-6 rounded-2xl
+            hover:from-blue-500 hover:to-amber-400
+            disabled:opacity-50 disabled:cursor-not-allowed
+            transition-all duration-200
+            shadow-glow-blue hover:shadow-glow-amber
             flex items-center justify-center gap-2"
         >
           <Plus className="w-5 h-5" />
@@ -153,3 +137,4 @@ const ManualCalculator = ({ onAddDrink, isLoading, prefill, onPrefillApplied }) 
 };
 
 export default ManualCalculator;
+

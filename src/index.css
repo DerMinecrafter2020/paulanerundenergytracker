@@ -2,52 +2,106 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Smooth transitions globally */
-* {
+/* ── Global Reset & Base ─────────────────────────────── */
+*, *::before, *::after {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Input focus styles */
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  opacity: 1;
-}
-
-/* Safe area for mobile devices */
-@supports (padding: env(safe-area-inset-bottom)) {
-  body {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-}
-
-/* Animation for smooth page load */
 body {
-  animation: fadeIn 0.3s ease-out;
+  background-color: #070b14;
+  color: #f1f5f9;
+  animation: bodyFadeIn 0.4s ease-out;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+@keyframes bodyFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Custom Scrollbar (dark) ─────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0d1117; }
+::-webkit-scrollbar-thumb { background: rgba(96,165,250,0.3); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(96,165,250,0.55); }
+
+/* ── Glass Card ──────────────────────────────────────── */
+.glass-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.glass-card-hover {
+  transition: all 0.25s ease;
+}
+.glass-card-hover:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+  border-color: rgba(96,165,250,0.3);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(96,165,250,0.2), inset 0 1px 0 rgba(255,255,255,0.10);
+  transform: translateY(-1px);
+}
+
+/* ── Neon Glow Variants ──────────────────────────────── */
+.glow-blue  { box-shadow: 0 0 24px rgba(96,165,250,0.4); }
+.glow-amber { box-shadow: 0 0 24px rgba(251,191,36,0.4); }
+.glow-green { box-shadow: 0 0 24px rgba(74,222,128,0.4); }
+
+/* ── Input (dark) ────────────────────────────────────── */
+.input-dark {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #f1f5f9;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  width: 100%;
+  transition: all 0.2s ease;
+  outline: none;
+}
+.input-dark::placeholder { color: rgba(148,163,184,0.6); }
+.input-dark:focus {
+  border-color: rgba(96,165,250,0.6);
+  background: rgba(96,165,250,0.06);
+  box-shadow: 0 0 0 3px rgba(96,165,250,0.15);
+}
+
+/* ── Number input spin buttons ───────────────────────── */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+
+/* ── Gradient text ───────────────────────────────────── */
+.text-gradient {
+  background: linear-gradient(135deg, #60a5fa, #fbbf24);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-green {
+  background: linear-gradient(135deg, #4ade80, #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Shimmer loading ─────────────────────────────────── */
+.shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.05) 75%);
+  background-size: 200% auto;
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* ── Safe area ───────────────────────────────────────── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* ── Floating orb ────────────────────────────────────── */
+.orb {
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+  position: absolute;
 }
