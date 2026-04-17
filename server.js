@@ -643,6 +643,28 @@ app.post('/api/admin/smtp/test', requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/admin/discord/test', requireAdmin, async (req, res) => {
+  const { webhookUrl } = req.body || {};
+  const safeWebhook = String(webhookUrl || '').trim();
+
+  if (!safeWebhook) {
+    return res.status(400).json({ error: 'Discord Webhook URL fehlt.' });
+  }
+  if (!/^https:\/\/discord\.com\/api\/webhooks\/.+/i.test(safeWebhook)) {
+    return res.status(400).json({ error: 'Ungültige Discord Webhook URL.' });
+  }
+
+  try {
+    await sendDiscordReminder({
+      webhookUrl: safeWebhook,
+      email: 'Admin-Test',
+    });
+    res.json({ success: true, message: 'Discord Testnachricht wurde gesendet.' });
+  } catch (err) {
+    res.status(500).json({ error: `Discord-Fehler: ${err.message}` });
+  }
+});
+
 // ── User Management Routes ────────────────────────────────────────────────────
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {

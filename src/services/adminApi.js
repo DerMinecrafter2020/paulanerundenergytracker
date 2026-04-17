@@ -30,6 +30,13 @@ export const testSmtpConfig = (testEmail) =>
     body:    JSON.stringify({ testEmail }),
   }).then(handle);
 
+export const testDiscordWebhook = (webhookUrl) =>
+  fetch(`${API_BASE}/api/admin/discord/test`, {
+    method:  'POST',
+    headers: adminHeaders(),
+    body:    JSON.stringify({ webhookUrl }),
+  }).then(handle);
+
 // ── Users ─────────────────────────────────────────────────────────────────
 export const fetchAdminUsers = () =>
   fetch(`${API_BASE}/api/admin/users`, { headers: adminHeaders() }).then(handle);

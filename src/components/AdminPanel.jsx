@@ -3,7 +3,7 @@ import {
   ShieldCheck, LogOut, Trash2, RefreshCw, Database,
   TrendingUp, Users, Zap, Calendar, BarChart2, AlertTriangle,
   Download, Search, ChevronDown, ChevronUp, Coffee,
-  Settings, Mail, Server, Lock, Eye, EyeOff, Send,
+  Settings, Mail, Server, Lock, Eye, EyeOff, Send, MessageCircle,
   CheckCircle, UserCheck, UserX, Clock, Shield,
 } from 'lucide-react';
 import { logout } from '../services/auth';
@@ -11,7 +11,7 @@ import { fetchLogs, deleteLog as deleteApiLog } from '../services/api';
 import {
   fetchSmtpConfig, saveSmtpConfig, testSmtpConfig,
   fetchAdminUsers, verifyAdminUser, deleteAdminUser, setUserRole,
-  checkDockerUpdate,
+  checkDockerUpdate, testDiscordWebhook,
 } from '../services/adminApi';
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -72,6 +72,8 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel }) => {
   const [showSmtpPw, setShowSmtpPw] = useState(false);
   const [smtpSaving, setSmtpSaving] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
+  const [discordTesting, setDiscordTesting] = useState(false);
+  const [discordWebhook, setDiscordWebhook] = useState('');
   const [smtpMsg, setSmtpMsg]     = useState(null);
 
   // ── Users state ────────────────────────────────────────────────────────
@@ -141,6 +143,24 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel }) => {
       setSmtpMsg({ type: 'error', text: err.message });
     } finally {
       setSmtpTesting(false);
+    }
+  };
+
+  const handleDiscordTest = async () => {
+    if (!discordWebhook.trim()) {
+      setSmtpMsg({ type: 'error', text: 'Bitte Discord Webhook URL eingeben.' });
+      return;
+    }
+
+    setDiscordTesting(true);
+    setSmtpMsg(null);
+    try {
+      const res = await testDiscordWebhook(discordWebhook.trim());
+      setSmtpMsg({ type: 'success', text: res.message || 'Discord Testnachricht gesendet.' });
+    } catch (err) {
+      setSmtpMsg({ type: 'error', text: err.message });
+    } finally {
+      setDiscordTesting(false);
     }
   };
 
@@ -961,6 +981,30 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel }) => {
                   {smtpTesting
                     ? <span className="w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
                     : <Send className="w-4 h-4" />}
+                  Test senden
+                </button>
+              </div>
+            </div>
+
+            {/* Discord test card */}
+            <div className="glass-card rounded-2xl p-6 space-y-4">
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-indigo-400" />
+                Discord-Webhook testen
+              </h3>
+              <p className="text-xs text-slate-500">
+                Sendet eine Testnachricht an deinen Discord Webhook.
+              </p>
+              <div className="flex gap-2">
+                <input type="url" value={discordWebhook} onChange={(e) => setDiscordWebhook(e.target.value)}
+                  placeholder="https://discord.com/api/webhooks/..." className="input-dark flex-1" />
+                <button onClick={handleDiscordTest} disabled={discordTesting || !discordWebhook.trim()}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl
+                    bg-indigo-500/20 border border-indigo-500/30 text-indigo-300
+                    hover:bg-indigo-500/30 transition-all text-sm disabled:opacity-50 shrink-0">
+                  {discordTesting
+                    ? <span className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                    : <MessageCircle className="w-4 h-4" />}
                   Test senden
                 </button>
               </div>
