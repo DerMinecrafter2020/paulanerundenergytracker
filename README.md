@@ -237,4 +237,4 @@ MIT License
 ---
 
 **Made with ⚡ by Cornelius**  
-**Version 1.0** | **Februar 2026**
+**Version 1.1.5** | **Februar 2026**
