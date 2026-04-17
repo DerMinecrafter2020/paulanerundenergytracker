@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Header from './components/Header';
 import ProgressBar from './components/ProgressBar';
 import PresetDrinks from './components/PresetDrinks';
@@ -22,8 +22,9 @@ function App() {
   const [error, setError] = useState(null);
   const [manualPrefill, setManualPrefill] = useState(null);
   const [dataSource, setDataSource] = useState(getSavedDataSource());
-  const [currentVersion, setCurrentVersion] = useState('local');
+  const [currentVersion, setCurrentVersion] = useState(null);
   const [latestVersion, setLatestVersion] = useState(null);
+  const isFirstCheck = useRef(true);
 
   // Logs für heute laden (je nach Datenquelle)
   useEffect(() => {
@@ -51,9 +52,17 @@ function App() {
         if (!response.ok) return;
         const data = await response.json();
         if (!isMounted) return;
-        setLatestVersion(data.version || null);
+        const version = data.version || null;
+        if (isFirstCheck.current) {
+          // Beim ersten Laden: aktuelle Version setzen – kein Update-Banner
+          setCurrentVersion(version);
+          isFirstCheck.current = false;
+        } else {
+          setLatestVersion(version);
+        }
       } catch (err) {
         // Ignorieren, falls API nicht erreichbar
+        isFirstCheck.current = false;
       }
     };
 
