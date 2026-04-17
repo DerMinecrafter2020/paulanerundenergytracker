@@ -1,7 +1,7 @@
 {
   "name": "energy-drink-caffeine-tracker",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "type": "module",
   "scripts": {
     "version:auto": "node scripts/bump-version.mjs",

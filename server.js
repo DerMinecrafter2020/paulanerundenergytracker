@@ -67,6 +67,28 @@ app.use(express.static(distPath));
 // MySQL Pool (single storage backend)
 let pool = null;
 
+const validateDbConfig = () => {
+  const host = process.env.MYSQL_HOST || 'localhost';
+  const user = process.env.MYSQL_USER || 'root';
+  const password = process.env.MYSQL_PASSWORD || '';
+  const database = process.env.MYSQL_DATABASE || 'caffeine_tracker';
+  const port = Number(process.env.MYSQL_PORT || 3306);
+
+  console.log(`[DB] 📋 Konfiguration:`);
+  console.log(`     Host:     ${host}`);
+  console.log(`     Port:     ${port}`);
+  console.log(`     User:     ${user}`);
+  console.log(`     Database: ${database}`);
+  console.log(`     Password: ${password ? '(gesetzt)' : '(LEER!)'}`);
+
+  // Warning if using localhost in Docker
+  if (host === 'localhost' || host === '127.0.0.1') {
+    console.warn(`[⚠️  WARNING] Host ist "${host}" - in Docker funktioniert das NICHT!`);
+    console.warn(`     In Docker: setze MYSQL_HOST auf den Service-Namen (z.B. "mysql")`);
+    console.warn(`     Lokal: MYSQL_HOST=localhost ist ok`);
+  }
+};
+
 const getPool = () => {
   if (!pool) {
     pool = mysql.createPool({
@@ -595,6 +617,9 @@ app.post('/api/login', async (req, res) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
+
+// ── Startup Validation ────────────────────────────────────────────────────
+validateDbConfig();
 
 initDb()
   .then(() => {

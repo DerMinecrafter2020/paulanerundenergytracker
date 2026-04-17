@@ -15,17 +15,17 @@ services:
     image: mysql:8.0
     container_name: koffein-mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD:-mysql-root-pw}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-caffeine_tracker}
       - MYSQL_USER=${MYSQL_USER:-koffein}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-mysql-koffein-pw}
     volumes:
       - mysql-data:/var/lib/mysql
     networks:
       - koffein-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 10s
       timeout: 5s
       retries: 10
