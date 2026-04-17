@@ -16,9 +16,7 @@ WORKDIR /app
 
 # Installiere nur Production Dependencies
 COPY package*.json ./
-RUN npm ci --omit=dev
-
-# Kopiere gebuildetes Frontend von Build Stage
+    RUN npm install --omit=dev
 COPY --from=build /app/dist ./dist
 
 # Kopiere Server
