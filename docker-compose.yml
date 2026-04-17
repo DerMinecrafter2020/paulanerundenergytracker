@@ -42,7 +42,7 @@ services:
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_USER=${MYSQL_USER:-koffein}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-mysql-koffein-pw}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-caffeine_tracker}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
       - PORT=3001

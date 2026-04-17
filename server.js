@@ -87,6 +87,12 @@ const validateDbConfig = () => {
     console.warn(`     In Docker: setze MYSQL_HOST auf den Service-Namen (z.B. "mysql")`);
     console.warn(`     Lokal: MYSQL_HOST=localhost ist ok`);
   }
+
+  if (!password) {
+    throw new Error(
+      '[DB] MYSQL_PASSWORD fehlt oder ist leer. Setze MYSQL_PASSWORD in deiner .env/.env.local oder in docker-compose.yml.'
+    );
+  }
 };
 
 const getPool = () => {
