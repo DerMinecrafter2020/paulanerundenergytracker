@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "version:auto": "node scripts/bump-version.mjs",
+    "migrate:legacy:mysql": "node scripts/migrate-legacy-json-to-mysql.mjs",
     "prebuild": "npm run version:auto",
     "dev": "vite",
     "server": "node server.js",

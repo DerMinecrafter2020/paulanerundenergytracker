@@ -13,42 +13,15 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DB_TYPE = process.env.DB_TYPE || 'mysql';
+const DB_TYPE = 'mysql';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// ── Persistent data directory ────────────────────────────────────────────────
-const DATA_DIR = path.join(__dirname, 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-
-const SMTP_CONFIG_FILE = path.join(DATA_DIR, 'smtp-config.json');
-const USERS_FILE       = path.join(DATA_DIR, 'users.json');
 
 // Admin secret – set ADMIN_SECRET in your .env
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'et-admin-2024';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-const loadSmtpConfig = () => {
-  try {
-    if (fs.existsSync(SMTP_CONFIG_FILE))
-      return JSON.parse(fs.readFileSync(SMTP_CONFIG_FILE, 'utf8'));
-  } catch {}
-  return null;
-};
-const saveSmtpConfig = (cfg) =>
-  fs.writeFileSync(SMTP_CONFIG_FILE, JSON.stringify(cfg, null, 2));
-
-const loadUsers = () => {
-  try {
-    if (fs.existsSync(USERS_FILE))
-      return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  } catch {}
-  return [];
-};
-const saveUsers = (users) =>
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-
 const hashPassword = (pw) => {
   const salt = process.env.PASSWORD_SALT || 'et-caffeine-salt-2024';
   return crypto.pbkdf2Sync(pw, salt, 100000, 64, 'sha512').toString('hex');
@@ -89,10 +62,7 @@ app.use(express.json());
 const distPath = path.join(__dirname, 'dist');
 app.use(express.static(distPath));
 
-// In-Memory Datenspeicher für lokalen Betrieb
-let logsData = {};
-
-// MySQL Pool - nur wenn MySQL genutzt wird
+// MySQL Pool (single storage backend)
 let pool = null;
 
 const getPool = () => {
@@ -106,23 +76,77 @@ const getPool = () => {
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
+      dateStrings: true,
     });
   }
   return pool;
 };
 
-const initDb = async () => {
-  if (DB_TYPE !== 'mysql') {
-    console.log(`[DB] 📝 Betrieb im Speicher-Modus (DB_TYPE: ${DB_TYPE})`);
-    return;
-  }
+const mapSmtpRowToConfig = (row) => {
+  if (!row) return null;
+  return {
+    host: row.host || '',
+    port: Number(row.port || 587),
+    secure: !!row.secure,
+    auth: {
+      user: row.auth_user || '',
+      pass: row.auth_pass || '',
+    },
+    fromName: row.from_name || 'Koffein-Tracker',
+    fromEmail: row.from_email || row.auth_user || '',
+    baseUrl: row.base_url || '',
+    registrationEnabled: row.registration_enabled !== 0,
+    demoEnabled: row.demo_enabled !== 0,
+  };
+};
 
+const loadSmtpConfig = async () => {
+  const dbPool = getPool();
+  const [rows] = await dbPool.execute(
+    'SELECT * FROM smtp_settings WHERE id = 1 LIMIT 1'
+  );
+  return mapSmtpRowToConfig(rows[0] || null);
+};
+
+const saveSmtpConfig = async (cfg) => {
+  const dbPool = getPool();
+  await dbPool.execute(
+    `INSERT INTO smtp_settings
+      (id, host, port, secure, auth_user, auth_pass, from_name, from_email, base_url, registration_enabled, demo_enabled)
+     VALUES
+      (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+      host = VALUES(host),
+      port = VALUES(port),
+      secure = VALUES(secure),
+      auth_user = VALUES(auth_user),
+      auth_pass = VALUES(auth_pass),
+      from_name = VALUES(from_name),
+      from_email = VALUES(from_email),
+      base_url = VALUES(base_url),
+      registration_enabled = VALUES(registration_enabled),
+      demo_enabled = VALUES(demo_enabled)`
+    , [
+      cfg.host,
+      Number(cfg.port),
+      !!cfg.secure,
+      cfg.auth?.user || '',
+      cfg.auth?.pass || '',
+      cfg.fromName || 'Koffein-Tracker',
+      cfg.fromEmail || cfg.auth?.user || '',
+      cfg.baseUrl || '',
+      cfg.registrationEnabled !== false,
+      cfg.demoEnabled !== false,
+    ]
+  );
+};
+
+const initDb = async () => {
   console.log(`[DB] 🗄️  Verbinde zu MySQL...`);
-  
   const dbPool = getPool();
 
   try {
-    const createTableQuery = `
+    const createLogsTableQuery = `
       CREATE TABLE IF NOT EXISTS caffeine_logs (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -136,7 +160,43 @@ const initDb = async () => {
       )
     `;
 
-    await dbPool.execute(createTableQuery);
+    const createUsersTableQuery = `
+      CREATE TABLE IF NOT EXISTS users (
+        id CHAR(36) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(32) NOT NULL DEFAULT 'user',
+        verified BOOLEAN NOT NULL DEFAULT false,
+        verify_token VARCHAR(255) NULL,
+        verify_token_expiry BIGINT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_login TIMESTAMP NULL DEFAULT NULL,
+        INDEX idx_users_email (email),
+        INDEX idx_users_verify_token (verify_token)
+      )
+    `;
+
+    const createSmtpTableQuery = `
+      CREATE TABLE IF NOT EXISTS smtp_settings (
+        id TINYINT PRIMARY KEY,
+        host VARCHAR(255) NULL,
+        port INT NOT NULL DEFAULT 587,
+        secure BOOLEAN NOT NULL DEFAULT false,
+        auth_user VARCHAR(255) NULL,
+        auth_pass VARCHAR(512) NULL,
+        from_name VARCHAR(255) NOT NULL DEFAULT 'Koffein-Tracker',
+        from_email VARCHAR(255) NULL,
+        base_url VARCHAR(512) NOT NULL DEFAULT '',
+        registration_enabled BOOLEAN NOT NULL DEFAULT true,
+        demo_enabled BOOLEAN NOT NULL DEFAULT true,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `;
+
+    await dbPool.execute(createLogsTableQuery);
+    await dbPool.execute(createUsersTableQuery);
+    await dbPool.execute(createSmtpTableQuery);
     console.log('[DB] ✓ Verbindung erfolgreich');
   } catch (error) {
     console.error('[DB] ✗ Verbindung fehlgeschlagen:', error.message);
@@ -159,17 +219,12 @@ app.get('/api/logs', async (req, res) => {
       return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
     }
 
-    if (DB_TYPE === 'mysql') {
-      const dbPool = getPool();
-      const [rows] = await dbPool.execute(
-        'SELECT * FROM caffeine_logs WHERE date = ? ORDER BY createdAt DESC',
-        [date]
-      );
-      res.json(rows);
-    } else {
-      // Lokales Speicher-System
-      res.json(logsData[date] || []);
-    }
+    const dbPool = getPool();
+    const [rows] = await dbPool.execute(
+      'SELECT * FROM caffeine_logs WHERE date = ? ORDER BY createdAt DESC',
+      [date]
+    );
+    res.json(rows);
   } catch (err) {
     console.error('GET /api/logs error:', err);
     res.status(500).json({ error: 'Database error' });
@@ -185,42 +240,20 @@ app.post('/api/logs', async (req, res) => {
 
     const safeDate = date || new Date().toISOString().split('T')[0];
 
-    if (DB_TYPE === 'mysql') {
-      const dbPool = getPool();
-      const [result] = await dbPool.execute(
-        `INSERT INTO caffeine_logs (name, size, caffeine, caffeinePerMl, icon, isPreset, date)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-        , [name, size, caffeine, caffeinePerMl ?? null, icon ?? null, !!isPreset, safeDate]
-      );
+    const dbPool = getPool();
+    const [result] = await dbPool.execute(
+      `INSERT INTO caffeine_logs (name, size, caffeine, caffeinePerMl, icon, isPreset, date)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      , [name, size, caffeine, caffeinePerMl ?? null, icon ?? null, !!isPreset, safeDate]
+    );
 
-      const insertedId = result.insertId;
-      const [rows] = await dbPool.execute(
-        'SELECT * FROM caffeine_logs WHERE id = ?',
-        [insertedId]
-      );
+    const insertedId = result.insertId;
+    const [rows] = await dbPool.execute(
+      'SELECT * FROM caffeine_logs WHERE id = ?',
+      [insertedId]
+    );
 
-      res.status(201).json(rows[0]);
-    } else {
-      // Lokales Speicher-System
-      if (!logsData[safeDate]) {
-        logsData[safeDate] = [];
-      }
-
-      const newEntry = {
-        id: Date.now(),
-        name,
-        size,
-        caffeine,
-        caffeinePerMl: caffeinePerMl ?? null,
-        icon: icon ?? null,
-        isPreset: !!isPreset,
-        date: safeDate,
-        createdAt: new Date().toISOString()
-      };
-
-      logsData[safeDate].push(newEntry);
-      res.status(201).json(newEntry);
-    }
+    res.status(201).json(rows[0]);
   } catch (err) {
     console.error('POST /api/logs error:', err);
     res.status(500).json({ error: 'Database error' });
@@ -231,15 +264,8 @@ app.delete('/api/logs/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (DB_TYPE === 'mysql') {
-      const dbPool = getPool();
-      await dbPool.execute('DELETE FROM caffeine_logs WHERE id = ?', [id]);
-    } else {
-      // Lokales Speicher-System
-      for (const date in logsData) {
-        logsData[date] = logsData[date].filter(entry => entry.id !== Number(id));
-      }
-    }
+    const dbPool = getPool();
+    await dbPool.execute('DELETE FROM caffeine_logs WHERE id = ?', [id]);
 
     res.json({ success: true });
   } catch (err) {
@@ -249,40 +275,50 @@ app.delete('/api/logs/:id', async (req, res) => {
 });
 
 // ── SMTP Admin Routes ─────────────────────────────────────────────────────────
-app.get('/api/admin/smtp', requireAdmin, (req, res) => {
-  const cfg = loadSmtpConfig();
-  if (!cfg) return res.json(null);
-  // Mask password before sending to client
-  res.json({ ...cfg, auth: { ...cfg.auth, pass: cfg.auth.pass ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '' } });
+app.get('/api/admin/smtp', requireAdmin, async (req, res) => {
+  try {
+    const cfg = await loadSmtpConfig();
+    if (!cfg) return res.json(null);
+    // Mask password before sending to client
+    res.json({ ...cfg, auth: { ...cfg.auth, pass: cfg.auth.pass ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '' } });
+  } catch (err) {
+    console.error('GET /api/admin/smtp error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.post('/api/admin/smtp', requireAdmin, (req, res) => {
+app.post('/api/admin/smtp', requireAdmin, async (req, res) => {
   const { host, port, secure, auth, fromName, fromEmail, baseUrl, registrationEnabled, demoEnabled } = req.body || {};
   if (!host || !port || !auth?.user)
     return res.status(400).json({ error: 'Host, Port und Benutzername sind erforderlich.' });
 
-  const prev = loadSmtpConfig();
-  saveSmtpConfig({
-    host,
-    port: Number(port),
-    secure: !!secure,
-    auth: {
-      user: auth.user,
-      // Keep existing password when client sends the masked placeholder
-      pass: auth.pass === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' ? (prev?.auth?.pass || '') : auth.pass,
-    },
-    fromName:            fromName            || 'Koffein-Tracker',
-    fromEmail:           fromEmail           || auth.user,
-    baseUrl:             baseUrl             || '',
-    registrationEnabled: registrationEnabled !== false,
-    demoEnabled:          demoEnabled !== false,
-  });
-  res.json({ success: true });
+  try {
+    const prev = await loadSmtpConfig();
+    await saveSmtpConfig({
+      host,
+      port: Number(port),
+      secure: !!secure,
+      auth: {
+        user: auth.user,
+        // Keep existing password when client sends the masked placeholder
+        pass: auth.pass === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' ? (prev?.auth?.pass || '') : auth.pass,
+      },
+      fromName: fromName || 'Koffein-Tracker',
+      fromEmail: fromEmail || auth.user,
+      baseUrl: baseUrl || '',
+      registrationEnabled: registrationEnabled !== false,
+      demoEnabled: demoEnabled !== false,
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/admin/smtp error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 app.post('/api/admin/smtp/test', requireAdmin, async (req, res) => {
   const { testEmail } = req.body || {};
-  const cfg = loadSmtpConfig();
+  const cfg = await loadSmtpConfig();
   if (!cfg)       return res.status(400).json({ error: 'Kein SMTP konfiguriert.' });
   if (!testEmail) return res.status(400).json({ error: 'Ziel-E-Mail fehlt.' });
   try {
@@ -301,55 +337,96 @@ app.post('/api/admin/smtp/test', requireAdmin, async (req, res) => {
 });
 
 // ── User Management Routes ────────────────────────────────────────────────────
-app.get('/api/admin/users', requireAdmin, (req, res) => {
-  const users = loadUsers();
-  res.json(users.map(({ passwordHash, verifyToken, verifyTokenExpiry, ...u }) => u));
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const dbPool = getPool();
+    const [rows] = await dbPool.execute(
+      `SELECT
+        id,
+        name,
+        email,
+        role,
+        verified,
+        created_at AS createdAt,
+        last_login AS lastLogin
+       FROM users
+       ORDER BY created_at DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /api/admin/users error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.post('/api/admin/users/:id/verify', requireAdmin, (req, res) => {
-  const users = loadUsers();
-  const user  = users.find(u => u.id === req.params.id);
-  if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
-  user.verified          = true;
-  user.verifyToken       = null;
-  user.verifyTokenExpiry = null;
-  saveUsers(users);
-  res.json({ success: true });
+app.post('/api/admin/users/:id/verify', requireAdmin, async (req, res) => {
+  try {
+    const dbPool = getPool();
+    const [result] = await dbPool.execute(
+      'UPDATE users SET verified = true, verify_token = NULL, verify_token_expiry = NULL WHERE id = ?',
+      [req.params.id]
+    );
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/admin/users/:id/verify error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
-  let users = loadUsers();
-  const before = users.length;
-  users = users.filter(u => u.id !== req.params.id);
-  if (users.length === before) return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
-  saveUsers(users);
-  res.json({ success: true });
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const dbPool = getPool();
+    const [result] = await dbPool.execute(
+      'DELETE FROM users WHERE id = ?',
+      [req.params.id]
+    );
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/admin/users/:id error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.post('/api/admin/users/:id/role', requireAdmin, (req, res) => {
+app.post('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
   const { role } = req.body || {};
   if (!role || !['admin', 'user'].includes(role))
     return res.status(400).json({ error: 'Rolle muss "admin" oder "user" sein.' });
-  const users = loadUsers();
-  const user  = users.find(u => u.id === req.params.id);
-  if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
-  user.role = role;
-  saveUsers(users);
-  res.json({ success: true });
+  try {
+    const dbPool = getPool();
+    const [result] = await dbPool.execute(
+      'UPDATE users SET role = ? WHERE id = ?',
+      [role, req.params.id]
+    );
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/admin/users/:id/role error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ── Public settings (no auth required) ────────────────────────────────────────
-app.get('/api/settings/public', (req, res) => {
-  const cfg = loadSmtpConfig();
-  res.json({
-    demoEnabled:          cfg?.demoEnabled !== false,
-    registrationEnabled:  cfg?.registrationEnabled !== false,
-  });
+app.get('/api/settings/public', async (req, res) => {
+  try {
+    const cfg = await loadSmtpConfig();
+    res.json({
+      demoEnabled: cfg?.demoEnabled !== false,
+      registrationEnabled: cfg?.registrationEnabled !== false,
+    });
+  } catch (err) {
+    console.error('GET /api/settings/public error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ── Public Registration & Login ───────────────────────────────────────────────
 app.post('/api/register', async (req, res) => {
-  const cfg = loadSmtpConfig();
+  const cfg = await loadSmtpConfig();
   if (!cfg?.registrationEnabled)
     return res.status(403).json({ error: 'Registrierung ist aktuell deaktiviert. Bitte wende dich an den Administrator.' });
 
@@ -359,25 +436,31 @@ app.post('/api/register', async (req, res) => {
   if (password.length < 8)
     return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein.' });
 
-  const users    = loadUsers();
-  if (users.find(u => u.email.toLowerCase() === email.toLowerCase()))
+  const dbPool = getPool();
+  const lowerEmail = email.toLowerCase();
+
+  const [existing] = await dbPool.execute(
+    'SELECT id FROM users WHERE email = ? LIMIT 1',
+    [lowerEmail]
+  );
+  if (existing.length > 0)
     return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits registriert.' });
 
   const verifyToken  = crypto.randomBytes(32).toString('hex');
-  const newUser = {
-    id:                crypto.randomUUID(),
-    name,
-    email:             email.toLowerCase(),
-    passwordHash:      hashPassword(password),
-    role:              'user',
-    verified:          false,
-    verifyToken,
-    verifyTokenExpiry: Date.now() + 24 * 60 * 60 * 1000,
-    createdAt:         new Date().toISOString(),
-    lastLogin:         null,
-  };
-  users.push(newUser);
-  saveUsers(users);
+  const newUserId = crypto.randomUUID();
+  await dbPool.execute(
+    `INSERT INTO users
+      (id, name, email, password_hash, role, verified, verify_token, verify_token_expiry)
+     VALUES (?, ?, ?, ?, 'user', false, ?, ?)`
+    , [
+      newUserId,
+      name,
+      lowerEmail,
+      hashPassword(password),
+      verifyToken,
+      Date.now() + 24 * 60 * 60 * 1000,
+    ]
+  );
 
   try {
     const t        = createTransporter(cfg);
@@ -406,33 +489,65 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-app.get('/api/verify/:token', (req, res) => {
-  const users = loadUsers();
-  const user  = users.find(u => u.verifyToken === req.params.token);
-  if (!user)                       return res.redirect('/?verified=invalid');
-  if (Date.now() > user.verifyTokenExpiry) return res.redirect('/?verified=expired');
-  user.verified          = true;
-  user.verifyToken       = null;
-  user.verifyTokenExpiry = null;
-  saveUsers(users);
-  res.redirect('/?verified=1');
+app.get('/api/verify/:token', async (req, res) => {
+  try {
+    const dbPool = getPool();
+    const [rows] = await dbPool.execute(
+      `SELECT id, verify_token_expiry AS verifyTokenExpiry
+       FROM users
+       WHERE verify_token = ?
+       LIMIT 1`,
+      [req.params.token]
+    );
+    const user = rows[0];
+    if (!user) return res.redirect('/?verified=invalid');
+    if (Date.now() > Number(user.verifyTokenExpiry || 0))
+      return res.redirect('/?verified=expired');
+
+    await dbPool.execute(
+      'UPDATE users SET verified = true, verify_token = NULL, verify_token_expiry = NULL WHERE id = ?',
+      [user.id]
+    );
+    res.redirect('/?verified=1');
+  } catch (err) {
+    console.error('GET /api/verify/:token error:', err);
+    res.redirect('/?verified=invalid');
+  }
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password)
     return res.status(400).json({ error: 'E-Mail und Passwort erforderlich.' });
 
-  const users = loadUsers();
-  const user  = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-  if (!user)                return res.status(401).json({ error: 'Ung\u00fcltige Zugangsdaten.' });
-  if (!user.verified)       return res.status(403).json({ error: 'E-Mail-Adresse noch nicht best\u00e4tigt. Bitte pr\u00fcfe dein Postfach.' });
-  if (user.passwordHash !== hashPassword(password))
-    return res.status(401).json({ error: 'Ung\u00fcltige Zugangsdaten.' });
+  try {
+    const dbPool = getPool();
+    const [rows] = await dbPool.execute(
+      `SELECT
+        id,
+        name,
+        email,
+        role,
+        verified,
+        password_hash AS passwordHash
+       FROM users
+       WHERE email = ?
+       LIMIT 1`,
+      [email.toLowerCase()]
+    );
+    const user = rows[0];
+    if (!user) return res.status(401).json({ error: 'Ung\u00fcltige Zugangsdaten.' });
+    if (!user.verified)
+      return res.status(403).json({ error: 'E-Mail-Adresse noch nicht best\u00e4tigt. Bitte pr\u00fcfe dein Postfach.' });
+    if (user.passwordHash !== hashPassword(password))
+      return res.status(401).json({ error: 'Ung\u00fcltige Zugangsdaten.' });
 
-  user.lastLogin = new Date().toISOString();
-  saveUsers(users);
-  res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    await dbPool.execute('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
+    res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  } catch (err) {
+    console.error('POST /api/login error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // SPA Fallback
