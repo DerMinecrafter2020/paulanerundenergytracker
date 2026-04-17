@@ -75,7 +75,8 @@ let dbState = {
 };
 
 const ensureDbFile = () => {
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  const dbDir = path.dirname(dbFile);
+  if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
   if (!fs.existsSync(dbFile)) {
     fs.writeFileSync(dbFile, JSON.stringify(dbState, null, 2), 'utf8');
   }
@@ -84,17 +85,34 @@ const ensureDbFile = () => {
 const loadDbState = () => {
   ensureDbFile();
   const raw = fs.readFileSync(dbFile, 'utf8');
-  const parsed = raw ? JSON.parse(raw) : {};
+  let parsed = {};
+  try {
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    const backupPath = `${dbFile}.corrupt-${Date.now()}.bak`;
+    fs.copyFileSync(dbFile, backupPath);
+    console.error('[DB] JSON-Datei war defekt, Backup erstellt:', backupPath);
+    parsed = {};
+  }
+
+  // Backward-compatible migration from older key names
+  const legacyLogs = Array.isArray(parsed.logs) ? parsed.logs : [];
+  const legacyUsers = Array.isArray(parsed.registered_users) ? parsed.registered_users : [];
+  const legacySmtp = parsed.smtpConfig || null;
+
   dbState = {
-    caffeine_logs: Array.isArray(parsed.caffeine_logs) ? parsed.caffeine_logs : [],
-    users: Array.isArray(parsed.users) ? parsed.users : [],
-    smtp_settings: parsed.smtp_settings || null,
+    caffeine_logs: Array.isArray(parsed.caffeine_logs) ? parsed.caffeine_logs : legacyLogs,
+    users: Array.isArray(parsed.users) ? parsed.users : legacyUsers,
+    smtp_settings: parsed.smtp_settings || legacySmtp,
     reminders: Array.isArray(parsed.reminders) ? parsed.reminders : [],
   };
 };
 
 const persistDbState = () => {
-  fs.writeFileSync(dbFile, JSON.stringify(dbState, null, 2), 'utf8');
+  ensureDbFile();
+  const tmpPath = `${dbFile}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(dbState, null, 2), 'utf8');
+  fs.renameSync(tmpPath, dbFile);
 };
 
 const makeResult = (affectedRows = 0, insertId = undefined) => {
@@ -105,6 +123,9 @@ const makeResult = (affectedRows = 0, insertId = undefined) => {
 
 class FileDbAdapter {
   async execute(sql, params = []) {
+    // Reload each query so data remains consistent across restarts or multiple processes.
+    loadDbState();
+
     const q = String(sql).replace(/\s+/g, ' ').trim().toLowerCase();
 
     if (q.startsWith('create table if not exists')) {
