@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Zap, Mail, Lock, Eye, EyeOff, LogIn, ShieldCheck, CheckCircle, AlertCircle, Clock, KeyRound, Shield } from 'lucide-react';
-import { isWebAuthnSupported, login, completeLoginWithTotp, completeLoginWithPasskey } from '../services/auth';
+import {
+  isWebAuthnSupported,
+  login,
+  completeLoginWithTotp,
+  completeLoginWithPasskey,
+  startAuthentikLogin,
+  completeAuthentikLogin,
+} from '../services/auth';
 import { fetchPublicSettings } from '../services/adminApi';
 
 const LoginPage = ({ onLogin, onShowRegister }) => {
@@ -10,7 +17,12 @@ const LoginPage = ({ onLogin, onShowRegister }) => {
   const [error, setError]       = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [verifiedBanner, setVerifiedBanner] = useState(null);
-  const [publicSettings, setPublicSettings] = useState({ demoEnabled: true, registrationEnabled: true });
+  const [publicSettings, setPublicSettings] = useState({
+    demoEnabled: true,
+    registrationEnabled: true,
+    authMode: 'local',
+    authentikEnabled: false,
+  });
   const [pending2FA, setPending2FA] = useState(null);
   const [totpCode, setTotpCode] = useState('');
   const [webauthnSupported, setWebauthnSupported] = useState(false);
@@ -25,6 +37,29 @@ const LoginPage = ({ onLogin, onShowRegister }) => {
       .then((s) => setPublicSettings(s))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authToken = params.get('auth_token');
+    const authError = params.get('auth_error');
+    if (!authToken && !authError) return;
+
+    window.history.replaceState({}, '', window.location.pathname);
+
+    if (authError) {
+      setError(authError);
+      return;
+    }
+
+    if (!authToken) return;
+
+    setError('');
+    setIsLoading(true);
+    completeAuthentikLogin(authToken)
+      .then((session) => onLogin(session))
+      .catch((err) => setError(err.message))
+      .finally(() => setIsLoading(false));
+  }, [onLogin]);
 
   // Handle ?verified= query param (from email-verification redirect)
   useEffect(() => {
@@ -104,6 +139,7 @@ const LoginPage = ({ onLogin, onShowRegister }) => {
 
   const BannerIcon = verifiedBanner?.type === 'success' ? CheckCircle
     : verifiedBanner?.type === 'warning' ? Clock : AlertCircle;
+  const authentikMode = publicSettings.authMode === 'authentik';
 
   return (
     <div className="relative min-h-screen overflow-hidden flex items-center justify-center p-4"
@@ -140,6 +176,30 @@ const LoginPage = ({ onLogin, onShowRegister }) => {
 
           {/* Form */}
           {!pending2FA ? (
+          authentikMode ? (
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={() => startAuthentikLogin()}
+              disabled={isLoading || !publicSettings.authentikEnabled}
+              className="w-full py-3.5 rounded-xl font-semibold text-white transition-all duration-200
+                bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400
+                disabled:opacity-60 disabled:cursor-not-allowed shadow-glow-blue
+                flex items-center justify-center gap-2 mt-2"
+            >
+              {isLoading
+                ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <><LogIn className="w-4 h-4" />Mit Authentik anmelden</>
+              }
+            </button>
+
+            {!publicSettings.authentikEnabled && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm animate-slide-in">
+                Authentik ist nicht konfiguriert. Bitte den Admin kontaktieren.
+              </div>
+            )}
+          </div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">E-Mail</label>
@@ -182,6 +242,7 @@ const LoginPage = ({ onLogin, onShowRegister }) => {
               }
             </button>
           </form>
+          )
           ) : (
           <div className="space-y-4">
             <div className="rounded-2xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm text-violet-200">
@@ -251,7 +312,7 @@ const LoginPage = ({ onLogin, onShowRegister }) => {
           )}
 
           {/* Register link */}
-          {publicSettings.registrationEnabled && (
+          {publicSettings.registrationEnabled && !authentikMode && (
           <div className="mt-5 pt-4 border-t border-white/10 text-center">
             <p className="text-sm text-slate-500">
               Noch kein Konto?{' '}
@@ -264,7 +325,7 @@ const LoginPage = ({ onLogin, onShowRegister }) => {
           )}
 
           {/* Demo fill */}
-          {publicSettings.demoEnabled && (
+          {publicSettings.demoEnabled && !authentikMode && (
           <div className="mt-4 pt-4 border-t border-white/10">
             <p className="text-xs text-slate-600 text-center mb-3">Demo-Zugänge</p>
             <div className="flex gap-2">

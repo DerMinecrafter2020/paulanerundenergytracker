@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   # ── Redis: persistent storage, survives app container updates ──
   redis:
@@ -24,11 +23,32 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001}
+      - AUTH_MODE=${AUTH_MODE:-authentik}
+      - AUTHENTIK_BASE_URL=${AUTHENTIK_BASE_URL:-}
+      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID:-}
+      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET:-}
+      - AUTHENTIK_REDIRECT_URI=${AUTHENTIK_REDIRECT_URI:-http://localhost:3001/api/auth/authentik/callback}
+      - AUTHENTIK_SCOPES=${AUTHENTIK_SCOPES:-openid profile email}
+      - AUTHENTIK_AUTHORIZE_URL=${AUTHENTIK_AUTHORIZE_URL:-}
+      - AUTHENTIK_TOKEN_URL=${AUTHENTIK_TOKEN_URL:-}
+      - AUTHENTIK_USERINFO_URL=${AUTHENTIK_USERINFO_URL:-}
+      - AUTHENTIK_ADMIN_EMAILS=${AUTHENTIK_ADMIN_EMAILS:-}
       - PORT=3001
     volumes:
       - /root/energytracker/.env.local:/app/.env.local:ro
     depends_on:
       - redis
+      - mailpit
+    restart: unless-stopped
+    networks:
+      - koffein-network
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: koffein-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
     restart: unless-stopped
     networks:
       - koffein-network

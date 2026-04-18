@@ -87,5 +87,24 @@ export const impersonateUser = (id) =>
 export const fetchPublicSettings = () =>
   fetch(`${API_BASE}/api/settings/public`).then(handle);
 
+export const fetchAuthentikSetupStatus = () =>
+  fetch(`${API_BASE}/api/setup/authentik/status`).then(handle);
+
+export const submitAuthentikSetup = (config) =>
+  fetch(`${API_BASE}/api/setup/authentik`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  }).then(handle);
+
+export const exportAuthentikConfig = () =>
+  fetch(`${API_BASE}/api/admin/authentik/export`, { headers: adminHeaders() }).then(handle);
+
+export const resetAuthentikSetup = () =>
+  fetch(`${API_BASE}/api/admin/authentik/reset`, {
+    method: 'POST',
+    headers: adminHeaders(),
+  }).then(handle);
+
 export const fetchRedisHealth = () =>
   fetch(`${API_BASE}/api/admin/redis/health`, { headers: adminHeaders() }).then(handle);

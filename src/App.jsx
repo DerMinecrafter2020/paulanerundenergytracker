@@ -10,6 +10,7 @@ import AIAssistant from './components/AIAssistant';
 import AIDrinkRecognizer from './components/AIDrinkRecognizer';
 import AIDailySummary from './components/AIDailySummary';
 import LoginPage from './components/LoginPage';
+import AuthentikSetupPage from './components/AuthentikSetupPage';
 import AdminPanel from './components/AdminPanel';
 import RegisterPage from './components/RegisterPage';
 import SettingsPanel from './components/SettingsPanel';
@@ -24,6 +25,7 @@ import {
 } from './services/api';
 import { fetchTodayLogs, addLog, removeLog } from './services/storage';
 import { getSession, logout, startImpersonation, stopImpersonation, getImpersonatorSession } from './services/auth';
+import { fetchPublicSettings } from './services/adminApi';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
 const VIEW_STATE_KEY = 'et:last-view-state';
@@ -48,6 +50,7 @@ const saveViewState = (nextState) => {
 function App() {
   const initialViewState = loadViewState();
   const [session, setSession]     = useState(() => getSession());
+  const [publicSettings, setPublicSettings] = useState({ authMode: 'local', setupRequired: false });
   const [authView, setAuthView]   = useState(initialViewState.authView || 'login'); // 'login' | 'register'
   const [adminView, setAdminView] = useState(initialViewState.adminView || 'admin'); // 'admin' | 'user'
   const [adminTab, setAdminTab]   = useState(initialViewState.adminTab || 'overview');
@@ -64,6 +67,18 @@ function App() {
     saveViewState({ ...current, authView, adminView, adminTab });
   }, [authView, adminView, adminTab]);
 
+  useEffect(() => {
+    let isMounted = true;
+    fetchPublicSettings()
+      .then((settings) => {
+        if (isMounted) setPublicSettings(settings || { authMode: 'local', setupRequired: false });
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleImpersonate = (userData) => {
     const newSession = startImpersonation(userData);
     setSession(newSession);
@@ -79,6 +94,21 @@ function App() {
   useEffect(() => {
     if (session?.role !== 'admin') setAdminView('admin');
   }, [session]);
+
+  if (!session && publicSettings?.authMode === 'authentik' && publicSettings?.setupRequired) {
+    return (
+      <AuthentikSetupPage
+        onConfigured={async () => {
+          try {
+            const settings = await fetchPublicSettings();
+            setPublicSettings(settings || { authMode: 'local', setupRequired: false });
+          } catch {
+            // Ignore refresh errors, login page will show connection errors if needed.
+          }
+        }}
+      />
+    );
+  }
 
   // ── If not logged in, show Login / Register ───────────────────────────
   if (!session && authView === 'register') {

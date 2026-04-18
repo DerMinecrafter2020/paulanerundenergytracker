@@ -15,6 +15,27 @@ const BUILTIN_USERS = [
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
+export const startAuthentikLogin = () => {
+  window.location.assign(`${API_BASE}/api/auth/authentik/start`);
+};
+
+export const completeAuthentikLogin = async (authToken) => {
+  const token = String(authToken || '').trim();
+  if (!token) throw new Error('Authentik-Token fehlt.');
+
+  const resp = await fetch(`${API_BASE}/api/auth/authentik/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ authToken: token }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || 'Authentik-Anmeldung fehlgeschlagen.');
+
+  const session = { ...data.user, loginAt: Date.now() };
+  localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+  return session;
+};
+
 export const isWebAuthnSupported = () => {
   try {
     return browserSupportsWebAuthn();
