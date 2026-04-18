@@ -41,11 +41,11 @@ export const testDiscordWebhook = (webhookUrl) =>
 export const fetchAiConfig = () =>
   fetch(`${API_BASE}/api/admin/ai`, { headers: adminHeaders() }).then(handle);
 
-export const saveAiConfig = ({ apiKey, model }) =>
+export const saveAiConfig = ({ apiKey, model, braveSearchKey }) =>
   fetch(`${API_BASE}/api/admin/ai`, {
     method:  'POST',
     headers: adminHeaders(),
-    body:    JSON.stringify({ apiKey, model }),
+    body:    JSON.stringify({ apiKey, model, braveSearchKey }),
   }).then(handle);
 
 // ── Users ─────────────────────────────────────────────────────────────────

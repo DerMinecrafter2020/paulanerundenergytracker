@@ -130,7 +130,7 @@ let dbState = {
   users: [],
   smtp_settings: null,
   reminders: [],
-  ai_config: { apiKey: '', model: 'deepseek/deepseek-v3' },
+  ai_config: { apiKey: '', model: 'deepseek/deepseek-v3', braveSearchKey: '' },
 };
 
 const safeParse = (s, fallback) => {
@@ -161,8 +161,9 @@ const loadDbState = async () => {
       smtp_settings: safeParse(smtp, null),
       reminders:     safeParse(reminders, []),
       ai_config: {
-        apiKey: parsedAi.apiKey || '',
-        model:  parsedAi.model  || 'deepseek/deepseek-v3',
+        apiKey:         parsedAi.apiKey         || '',
+        model:          parsedAi.model          || 'deepseek/deepseek-v3',
+        braveSearchKey: parsedAi.braveSearchKey || '',
       },
     };
   } catch (err) {
@@ -438,13 +439,14 @@ const initDb = async () => {
 
 // ── AI / OpenRouter helpers ───────────────────────────────────────────────────
 const loadAiConfig = () => {
-  return dbState.ai_config || { apiKey: '', model: 'deepseek/deepseek-v3' };
+  return dbState.ai_config || { apiKey: '', model: 'deepseek/deepseek-v3', braveSearchKey: '' };
 };
 
 const saveAiConfig = (cfg) => {
   dbState.ai_config = {
     apiKey: String(cfg.apiKey || '').trim(),
     model: String(cfg.model || 'deepseek/deepseek-v3').trim(),
+    braveSearchKey: String(cfg.braveSearchKey || '').trim(),
   };
   persistDbState();
 };
@@ -475,6 +477,124 @@ const callOpenRouter = async (messages, { model, apiKey } = {}) => {
 
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
+};
+
+const OFF_SEARCH_URL     = 'https://world.openfoodfacts.org/cgi/search.pl';
+const BRAVE_SEARCH_URL   = 'https://api.search.brave.com/res/v1/web/search';
+
+const fetchDrinkWebContextBrave = async (description, apiKey) => {
+  const query = `${String(description || '').trim()} Koffeingehalt mg Getränk Nährwerte`;
+  try {
+    const url = new URL(BRAVE_SEARCH_URL);
+    url.searchParams.set('q', query);
+    url.searchParams.set('count', '5');
+    url.searchParams.set('search_lang', 'de');
+
+    const resp = await fetch(url.toString(), {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': apiKey,
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!resp.ok) return null;
+
+    const data = await resp.json();
+    const results = Array.isArray(data?.web?.results) ? data.web.results : [];
+    if (results.length === 0) return null;
+
+    return results.slice(0, 5).map((r, idx) => {
+      const snippet = (r.description || r.extra_snippets?.[0] || '').slice(0, 300);
+      return `${idx + 1}. ${r.title || ''}\n   ${snippet}`;
+    }).join('\n\n');
+  } catch {
+    return null;
+  }
+};
+
+const parseMlFromText = (value) => {
+  if (!value) return null;
+  const match = String(value).toLowerCase().match(/(\d+(?:[\.,]\d+)?)\s*ml/);
+  if (!match) return null;
+  return Math.round(parseFloat(match[1].replace(',', '.')));
+};
+
+const toNumber = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+const getOffCaffeinePer100ml = (product) => {
+  const nutriments = product?.nutriments || {};
+
+  const direct100 = toNumber(nutriments.caffeine_100g);
+  if (direct100 !== null) return Math.round(direct100);
+
+  const direct = toNumber(nutriments.caffeine);
+  if (direct !== null) return Math.round(direct);
+
+  const serving = toNumber(nutriments.caffeine_serving);
+  if (serving !== null) {
+    const servingMl = parseMlFromText(product?.serving_size || product?.quantity);
+    if (servingMl) return Math.round((serving / servingMl) * 100);
+  }
+
+  return null;
+};
+
+const fetchDrinkWebContext = async (description) => {
+  const query = String(description || '').trim();
+  if (!query) return [];
+
+  try {
+    const url = new URL(OFF_SEARCH_URL);
+    url.searchParams.set('search_terms', query);
+    url.searchParams.set('search_simple', '1');
+    url.searchParams.set('action', 'process');
+    url.searchParams.set('json', '1');
+    url.searchParams.set('page_size', '5');
+    url.searchParams.set('fields', 'product_name,brands,quantity,serving_size,nutriments');
+
+    const resp = await fetch(url.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!resp.ok) return [];
+
+    const data = await resp.json();
+    const products = Array.isArray(data?.products) ? data.products : [];
+
+    return products
+      .map((p) => {
+        const name = p?.product_name || '';
+        const brand = p?.brands || '';
+        const sizeMl = parseMlFromText(p?.quantity || p?.serving_size);
+        const caffeinePer100ml = getOffCaffeinePer100ml(p);
+        return { name, brand, sizeMl, caffeinePer100ml };
+      })
+      .filter((p) => p.name)
+      .slice(0, 5);
+  } catch {
+    return [];
+  }
+};
+
+const formatDrinkWebContext = (hits) => {
+  if (!Array.isArray(hits) || hits.length === 0) {
+    return 'Keine verifizierten Online-Treffer gefunden. Nutze konservative Standardschaetzungen.';
+  }
+
+  return hits.map((hit, idx) => {
+    const brand = hit.brand ? `, Marke: ${hit.brand}` : '';
+    const size = hit.sizeMl ? `, Groesse: ${hit.sizeMl}ml` : '';
+    const caffeine = hit.caffeinePer100ml !== null && hit.caffeinePer100ml !== undefined
+      ? `, Koffein/100ml: ${hit.caffeinePer100ml}mg`
+      : ', Koffein/100ml: unbekannt';
+    return `${idx + 1}. ${hit.name}${brand}${size}${caffeine}`;
+  }).join('\n');
 };
 
 const getReminderOwnerKey = ({ userId, email }) => {
@@ -1110,21 +1230,32 @@ app.post('/api/reminders/me', async (req, res) => {
 // ── Admin AI Config ──────────────────────────────────────────────────────────
 app.get('/api/admin/ai', requireAdmin, (req, res) => {
   const cfg = loadAiConfig();
-  // Never expose the full key — mask it
   const maskedKey = cfg.apiKey
     ? cfg.apiKey.slice(0, 8) + '••••••••' + cfg.apiKey.slice(-4)
     : '';
-  res.json({ apiKeySet: !!cfg.apiKey, apiKeyMasked: maskedKey, model: cfg.model });
+  const maskedBraveKey = cfg.braveSearchKey
+    ? cfg.braveSearchKey.slice(0, 4) + '••••••••' + cfg.braveSearchKey.slice(-4)
+    : '';
+  res.json({
+    apiKeySet: !!cfg.apiKey,
+    apiKeyMasked: maskedKey,
+    model: cfg.model,
+    braveSearchKeySet: !!cfg.braveSearchKey,
+    braveSearchKeyMasked: maskedBraveKey,
+  });
 });
 
 app.post('/api/admin/ai', requireAdmin, (req, res) => {
-  const { apiKey, model } = req.body || {};
+  const { apiKey, model, braveSearchKey } = req.body || {};
   if (apiKey !== undefined && typeof apiKey !== 'string')
     return res.status(400).json({ error: 'apiKey muss ein String sein.' });
+  if (braveSearchKey !== undefined && typeof braveSearchKey !== 'string')
+    return res.status(400).json({ error: 'braveSearchKey muss ein String sein.' });
   const current = loadAiConfig();
   saveAiConfig({
-    apiKey: typeof apiKey === 'string' ? apiKey.trim() : current.apiKey,
-    model: typeof model === 'string' && model.trim() ? model.trim() : current.model,
+    apiKey:         typeof apiKey         === 'string' ? apiKey.trim()         : current.apiKey,
+    model:          typeof model          === 'string' && model.trim() ? model.trim() : current.model,
+    braveSearchKey: typeof braveSearchKey === 'string' ? braveSearchKey.trim() : current.braveSearchKey,
   });
   res.json({ success: true });
 });
@@ -1174,14 +1305,36 @@ app.post('/api/ai/recognize-drink', async (req, res) => {
     if (description.length > 500)
       return res.status(400).json({ error: 'Beschreibung zu lang (max. 500 Zeichen).' });
 
+    const cleanedDescription = description.trim();
+    const aiCfg = loadAiConfig();
+
+    // Try Brave Search first if key is configured, fall back to OpenFoodFacts
+    let webContext;
+    let searchSource = 'none';
+    if (aiCfg.braveSearchKey) {
+      const braveContext = await fetchDrinkWebContextBrave(cleanedDescription, aiCfg.braveSearchKey);
+      if (braveContext) {
+        webContext = braveContext;
+        searchSource = 'brave';
+      }
+    }
+    if (searchSource === 'none') {
+      const webHits = await fetchDrinkWebContext(cleanedDescription);
+      webContext = formatDrinkWebContext(webHits);
+      searchSource = webHits.length > 0 ? 'openfoodfacts' : 'none';
+    }
+
     const messages = [
       {
         role: 'system',
-        content: `Du bist ein Experte für Getränke und Koffeingehalt. Analysiere die Beschreibung eines Getränks und antworte AUSSCHLIESSLICH mit einem JSON-Objekt ohne Markdown-Formatierung. Format:
+        content: `Du bist ein Experte für Getränke und Koffeingehalt. Nutze die bereitgestellten Online-Treffer als primäre Datenquelle und antworte AUSSCHLIESSLICH mit einem JSON-Objekt ohne Markdown-Formatierung. Format:
 {"name":"Getränkename","caffeinePer100ml":Zahl,"sizeMl":Zahl,"confidence":"hoch|mittel|niedrig","hint":"optionaler Hinweis auf Deutsch"}
-Wichtig: caffeinePer100ml und sizeMl müssen Ganzzahlen sein. Typische Werte: Espresso=212mg/100ml, Red Bull=32mg/100ml, Kaffee=40mg/100ml, Cola=10mg/100ml, Monster=32mg/100ml.`,
+Wichtig: caffeinePer100ml und sizeMl müssen Ganzzahlen sein. Bei widersprüchlichen Quellen nimm den konservativeren Wert und setze confidence auf "mittel" oder "niedrig".`,
       },
-      { role: 'user', content: description.trim() },
+      {
+        role: 'user',
+        content: `Getränkeangabe des Nutzers:\n${cleanedDescription}\n\nOnline-Treffer:\n${webContext}`,
+      },
     ];
 
     const raw = await callOpenRouter(messages);
@@ -1194,12 +1347,18 @@ Wichtig: caffeinePer100ml und sizeMl müssen Ganzzahlen sein. Typische Werte: Es
     if (!parsed.name || typeof parsed.caffeinePer100ml !== 'number')
       throw new Error('Unvollständige AI-Antwort.');
 
+    const defaultHint = searchSource === 'brave'
+      ? 'Mit Brave Search abgeglichen.'
+      : searchSource === 'openfoodfacts'
+        ? 'Mit Online-Treffern abgeglichen (OpenFoodFacts).'
+        : 'Keine passenden Online-Treffer gefunden, Schätzung basiert auf Standards.';
+
     res.json({
       name: String(parsed.name),
       caffeinePer100ml: Math.max(0, Math.round(Number(parsed.caffeinePer100ml))),
       sizeMl: Math.max(1, Math.round(Number(parsed.sizeMl || 250))),
       confidence: parsed.confidence || 'mittel',
-      hint: parsed.hint || '',
+      hint: parsed.hint || defaultHint,
     });
   } catch (err) {
     console.error('[AI Recognize] Fehler:', err.message);

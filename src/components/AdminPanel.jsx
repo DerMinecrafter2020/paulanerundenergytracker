@@ -80,6 +80,8 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel, onImpersonate }) => {
   const [aiApiKey, setAiApiKey]   = useState('');
   const [aiModel, setAiModel]     = useState('deepseek/deepseek-v3');
   const [aiKeyMasked, setAiKeyMasked] = useState('');
+  const [braveSearchKey, setBraveSearchKey] = useState('');
+  const [braveKeyMasked, setBraveKeyMasked] = useState('');
   const [aiSaving, setAiSaving]   = useState(false);
   const [aiMsg, setAiMsg]         = useState(null);
 
@@ -107,7 +109,7 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel, onImpersonate }) => {
         .then((cfg) => { if (cfg) setSmtp(cfg); setSmtpLoaded(true); })
         .catch(() => setSmtpLoaded(true));
       fetchAiConfig()
-        .then((cfg) => { setAiModel(cfg.model || 'google/gemini-2.0-flash-001'); setAiKeyMasked(cfg.apiKeyMasked || ''); })
+        .then((cfg) => { setAiModel(cfg.model || 'google/gemini-2.0-flash-001'); setAiKeyMasked(cfg.apiKeyMasked || ''); setBraveKeyMasked(cfg.braveSearchKeyMasked || ''); })
         .catch(() => {});
       handleRedisCheck();
     }
@@ -198,11 +200,15 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel, onImpersonate }) => {
     setAiSaving(true);
     setAiMsg(null);
     try {
-      await saveAiConfig({ apiKey: aiApiKey.trim() || undefined, model: aiModel.trim() });
+      await saveAiConfig({ apiKey: aiApiKey.trim() || undefined, model: aiModel.trim(), braveSearchKey: braveSearchKey.trim() || undefined });
       setAiMsg({ type: 'success', text: 'AI-Einstellungen gespeichert.' });
       if (aiApiKey.trim()) {
         setAiKeyMasked(aiApiKey.slice(0, 8) + '••••••••' + aiApiKey.slice(-4));
         setAiApiKey('');
+      }
+      if (braveSearchKey.trim()) {
+        setBraveKeyMasked(braveSearchKey.slice(0, 4) + '••••••••' + braveSearchKey.slice(-4));
+        setBraveSearchKey('');
       }
     } catch (err) {
       setAiMsg({ type: 'error', text: err.message });
@@ -1162,6 +1168,26 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel, onImpersonate }) => {
                     className="input-dark font-mono text-sm"
                   />
                   <p className="text-xs text-slate-600 mt-1">z.B. google/gemini-2.0-flash-001, openai/gpt-4o-mini, meta-llama/llama-3.1-8b-instruct:free</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    Brave Search API-Token
+                  </label>
+                  <input
+                    type="password"
+                    value={braveSearchKey}
+                    onChange={(e) => setBraveSearchKey(e.target.value)}
+                    placeholder={braveKeyMasked ? 'Neuen Token eingeben zum Überschreiben…' : 'BSA…'}
+                    className="input-dark"
+                  />
+                  {braveKeyMasked && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Aktueller Token: <span className="font-mono text-orange-300">{braveKeyMasked}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-600 mt-1">
+                    Optionaler <a href="https://brave.com/search/api/" target="_blank" rel="noreferrer" className="text-orange-400 underline">Brave Search API</a>-Token. Wenn gesetzt, wird Brave Search statt OpenFoodFacts für die KI-Getränkeerkennung verwendet.
+                  </p>
                 </div>
               </div>
               <button onClick={handleSaveAi} disabled={aiSaving}
