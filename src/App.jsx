@@ -13,10 +13,11 @@ import LoginPage from './components/LoginPage';
 import AdminPanel from './components/AdminPanel';
 import RegisterPage from './components/RegisterPage';
 import {
-  fetchTodayLogs,
-  addLog,
-  removeLog,
-} from './services/storage';
+  fetchFavorites,
+  addFavorite,
+  removeFavorite,
+} from './services/api';
+import { fetchTodayLogs, addLog, removeLog } from './services/storage';
 import { getSession, logout, startImpersonation, stopImpersonation, getImpersonatorSession } from './services/auth';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
@@ -132,9 +133,18 @@ function TrackerApp({ session, onLogout, onShowAdminPanel, initialScrollY, onPer
   const [logs, setLogs]           = useState([]);
   const [error, setError]         = useState(null);
   const [manualPrefill, setManualPrefill] = useState(null);
+  const [favorites, setFavorites] = useState([]);
   const [currentVersion, setCurrentVersion] = useState(null);
   const [latestVersion, setLatestVersion]   = useState(null);
   const isFirstCheck = useRef(true);
+
+  const getDrinkKey = useCallback((drink) => {
+    const name = String(drink?.name || '').trim().toLowerCase();
+    const size = Number(drink?.size || 0);
+    const caffeine = Number(drink?.caffeine || 0);
+    const icon = String(drink?.icon || '').trim();
+    return `${name}|${size}|${caffeine}|${icon}`;
+  }, []);
 
   // Logs für heute laden
   useEffect(() => {
@@ -150,6 +160,19 @@ function TrackerApp({ session, onLogout, onShowAdminPanel, initialScrollY, onPer
     };
     loadToday();
   }, []);
+
+  useEffect(() => {
+    const loadFavorites = async () => {
+      try {
+        const payload = { userId: session?.id, email: session?.email };
+        const data = await fetchFavorites(payload);
+        setFavorites(Array.isArray(data?.items) ? data.items : []);
+      } catch (err) {
+        console.error('Fehler beim Laden der Favoriten:', err);
+      }
+    };
+    loadFavorites();
+  }, [session?.id, session?.email]);
 
   useEffect(() => {
     if (typeof initialScrollY === 'number' && initialScrollY > 0) {
@@ -237,6 +260,55 @@ function TrackerApp({ session, onLogout, onShowAdminPanel, initialScrollY, onPer
     }
   }, []);
 
+  const isFavoriteLog = useCallback((log) => {
+    const key = getDrinkKey(log);
+    return favorites.some((f) => getDrinkKey(f) === key);
+  }, [favorites, getDrinkKey]);
+
+  const handleToggleFavorite = useCallback(async (log, isFavorite) => {
+    try {
+      const payload = { userId: session?.id, email: session?.email };
+      const key = getDrinkKey(log);
+
+      if (isFavorite) {
+        const existing = favorites.find((f) => getDrinkKey(f) === key);
+        if (!existing?.id) return;
+        await removeFavorite({ ...payload, favoriteId: existing.id });
+        setFavorites((prev) => prev.filter((f) => f.id !== existing.id));
+        return;
+      }
+
+      const result = await addFavorite({
+        ...payload,
+        drink: {
+          name: log.name,
+          size: Number(log.size),
+          caffeine: Number(log.caffeine),
+          caffeinePerMl: log.caffeinePerMl ?? null,
+          icon: log.icon || '🥤',
+        },
+      });
+
+      if (result?.item) {
+        setFavorites((prev) => {
+          const filtered = prev.filter((f) => getDrinkKey(f) !== key);
+          return [result.item, ...filtered];
+        });
+      }
+    } catch (err) {
+      setError(err.message || 'Fehler beim Aktualisieren der Favoriten.');
+    }
+  }, [favorites, getDrinkKey, session?.email, session?.id]);
+
+  const handleRemoveFavorite = useCallback(async (favoriteId) => {
+    try {
+      await removeFavorite({ userId: session?.id, email: session?.email, favoriteId });
+      setFavorites((prev) => prev.filter((f) => f.id !== favoriteId));
+    } catch (err) {
+      setError(err.message || 'Fehler beim Entfernen des Favoriten.');
+    }
+  }, [session?.email, session?.id]);
+
   return (
     <div className="min-h-screen" style={{ background: 'radial-gradient(ellipse at top, #0f172a 0%, #070b14 70%)' }}>
       <Header
@@ -273,7 +345,12 @@ function TrackerApp({ session, onLogout, onShowAdminPanel, initialScrollY, onPer
 
         <ProgressBar currentCaffeine={totalCaffeineToday} />
 
-        <PresetDrinks onAddDrink={handleAddDrink} isLoading={isOperationLoading} />
+        <PresetDrinks
+          favorites={favorites}
+          onAddDrink={handleAddDrink}
+          onRemoveFavorite={handleRemoveFavorite}
+          isLoading={isOperationLoading}
+        />
 
         <OnlineSearch
           onSelect={(item) =>
@@ -309,6 +386,8 @@ function TrackerApp({ session, onLogout, onShowAdminPanel, initialScrollY, onPer
         <DrinkHistory
           logs={logs}
           onDeleteLog={handleDeleteLog}
+          onToggleFavorite={handleToggleFavorite}
+          isFavoriteLog={isFavoriteLog}
           isLoading={isOperationLoading}
         />
       </main>

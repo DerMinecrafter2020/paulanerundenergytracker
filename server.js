@@ -122,6 +122,7 @@ const REDIS_KEYS = {
   users:         'koffein:users',
   smtp_settings: 'koffein:smtp_settings',
   reminders:     'koffein:reminders',
+  favorites:     'koffein:favorites',
   ai_config:     'koffein:ai_config',
 };
 
@@ -130,6 +131,7 @@ let dbState = {
   users: [],
   smtp_settings: null,
   reminders: [],
+  favorites: [],
   ai_config: { apiKey: '', model: 'deepseek/deepseek-v3', braveSearchKey: '' },
 };
 
@@ -147,11 +149,12 @@ const loadDbState = async () => {
       return;
     }
 
-    const [logs, users, smtp, reminders, ai] = await redis.mget(
+    const [logs, users, smtp, reminders, favorites, ai] = await redis.mget(
       REDIS_KEYS.caffeine_logs,
       REDIS_KEYS.users,
       REDIS_KEYS.smtp_settings,
       REDIS_KEYS.reminders,
+      REDIS_KEYS.favorites,
       REDIS_KEYS.ai_config,
     );
     const parsedAi = safeParse(ai, {});
@@ -160,6 +163,7 @@ const loadDbState = async () => {
       users:         safeParse(users, []),
       smtp_settings: safeParse(smtp, null),
       reminders:     safeParse(reminders, []),
+      favorites:     safeParse(favorites, []),
       ai_config: {
         apiKey:         parsedAi.apiKey         || '',
         model:          parsedAi.model          || 'deepseek/deepseek-v3',
@@ -177,6 +181,7 @@ const persistDbState = () => {
     REDIS_KEYS.users,          JSON.stringify(dbState.users),
     REDIS_KEYS.smtp_settings,  JSON.stringify(dbState.smtp_settings),
     REDIS_KEYS.reminders,      JSON.stringify(dbState.reminders),
+    REDIS_KEYS.favorites,      JSON.stringify(dbState.favorites),
     REDIS_KEYS.ai_config,      JSON.stringify(dbState.ai_config),
   ).catch((err) => console.error('[DB] Redis Speicherfehler:', err.message));
 };
@@ -647,6 +652,96 @@ const upsertReminderForUser = ({ userId, email, settings }) => {
 
   persistDbState();
   return updated;
+};
+
+const getFavoritesOwnerKey = ({ userId, email }) => {
+  if (userId) return `user:${userId}`;
+  return `email:${String(email || '').toLowerCase().trim()}`;
+};
+
+const favoriteDrinkKey = (drink) => {
+  const name = String(drink?.name || '').toLowerCase().trim();
+  const size = Number(drink?.size || 0);
+  const caffeine = Number(drink?.caffeine || 0);
+  const icon = String(drink?.icon || '').trim();
+  return `${name}|${size}|${caffeine}|${icon}`;
+};
+
+const getFavoritesForUser = ({ userId, email }) => {
+  const ownerKey = getFavoritesOwnerKey({ userId, email });
+  const found = dbState.favorites.find((f) => f.ownerKey === ownerKey);
+  if (!found) {
+    return {
+      ownerKey,
+      userId: userId || null,
+      email: String(email || '').toLowerCase().trim(),
+      items: [],
+    };
+  }
+  return {
+    ...found,
+    items: Array.isArray(found.items) ? found.items : [],
+  };
+};
+
+const upsertFavoriteForUser = ({ userId, email, drink }) => {
+  const ownerKey = getFavoritesOwnerKey({ userId, email });
+  const idx = dbState.favorites.findIndex((f) => f.ownerKey === ownerKey);
+  const base = idx >= 0 ? dbState.favorites[idx] : {
+    ownerKey,
+    userId: userId || null,
+    email: String(email || '').toLowerCase().trim(),
+    items: [],
+  };
+
+  const items = Array.isArray(base.items) ? [...base.items] : [];
+  const key = favoriteDrinkKey(drink);
+  const existingIdx = items.findIndex((item) => favoriteDrinkKey(item) === key);
+
+  const item = {
+    id: existingIdx >= 0 ? items[existingIdx].id : crypto.randomUUID(),
+    name: String(drink.name || '').trim(),
+    size: Number(drink.size || 0),
+    caffeine: Number(drink.caffeine || 0),
+    caffeinePerMl: drink.caffeinePerMl !== undefined && drink.caffeinePerMl !== null
+      ? Number(drink.caffeinePerMl)
+      : null,
+    icon: String(drink.icon || '🥤'),
+    updatedAt: new Date().toISOString(),
+    createdAt: existingIdx >= 0 ? items[existingIdx].createdAt : new Date().toISOString(),
+  };
+
+  if (existingIdx >= 0) items[existingIdx] = item;
+  else items.unshift(item);
+
+  const updated = {
+    ...base,
+    userId: userId || null,
+    email: String(email || '').toLowerCase().trim(),
+    items,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (idx >= 0) dbState.favorites[idx] = updated;
+  else dbState.favorites.push(updated);
+
+  persistDbState();
+  return item;
+};
+
+const removeFavoriteForUser = ({ userId, email, favoriteId }) => {
+  const ownerKey = getFavoritesOwnerKey({ userId, email });
+  const idx = dbState.favorites.findIndex((f) => f.ownerKey === ownerKey);
+  if (idx < 0) return false;
+
+  const before = dbState.favorites[idx].items.length;
+  dbState.favorites[idx].items = dbState.favorites[idx].items.filter((item) => item.id !== favoriteId);
+  const removed = before !== dbState.favorites[idx].items.length;
+  if (removed) {
+    dbState.favorites[idx].updatedAt = new Date().toISOString();
+    persistDbState();
+  }
+  return removed;
 };
 
 const sendReminderEmail = async ({ to }) => {
@@ -1227,6 +1322,76 @@ app.post('/api/reminders/me', async (req, res) => {
   }
 });
 
+// ── User Favorites ───────────────────────────────────────────────────────────
+app.get('/api/favorites/me', async (req, res) => {
+  try {
+    const userId = String(req.query.userId || '').trim() || null;
+    const email = String(req.query.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ error: 'email ist erforderlich.' });
+
+    const favorites = getFavoritesForUser({ userId, email });
+    res.json({ items: favorites.items });
+  } catch (err) {
+    console.error('GET /api/favorites/me error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/favorites/me', async (req, res) => {
+  try {
+    const { userId, email, drink } = req.body || {};
+    const safeEmail = String(email || '').toLowerCase().trim();
+    const safeUserId = String(userId || '').trim() || null;
+
+    if (!safeEmail) return res.status(400).json({ error: 'email ist erforderlich.' });
+    if (!drink || typeof drink !== 'object') return res.status(400).json({ error: 'drink ist erforderlich.' });
+
+    const name = String(drink.name || '').trim();
+    const size = Number(drink.size);
+    const caffeine = Number(drink.caffeine);
+
+    if (!name) return res.status(400).json({ error: 'drink.name ist erforderlich.' });
+    if (!Number.isFinite(size) || size <= 0) return res.status(400).json({ error: 'drink.size ist ungültig.' });
+    if (!Number.isFinite(caffeine) || caffeine < 0) return res.status(400).json({ error: 'drink.caffeine ist ungültig.' });
+
+    const item = upsertFavoriteForUser({
+      userId: safeUserId,
+      email: safeEmail,
+      drink: {
+        name,
+        size: Math.round(size),
+        caffeine: Math.round(caffeine),
+        caffeinePerMl: drink.caffeinePerMl,
+        icon: drink.icon || '🥤',
+      },
+    });
+
+    res.json({ success: true, item });
+  } catch (err) {
+    console.error('POST /api/favorites/me error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.delete('/api/favorites/me', async (req, res) => {
+  try {
+    const userId = String(req.query.userId || '').trim() || null;
+    const email = String(req.query.email || '').toLowerCase().trim();
+    const favoriteId = String(req.query.favoriteId || '').trim();
+
+    if (!email) return res.status(400).json({ error: 'email ist erforderlich.' });
+    if (!favoriteId) return res.status(400).json({ error: 'favoriteId ist erforderlich.' });
+
+    const removed = removeFavoriteForUser({ userId, email, favoriteId });
+    if (!removed) return res.status(404).json({ error: 'Favorit nicht gefunden.' });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/favorites/me error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // ── Admin AI Config ──────────────────────────────────────────────────────────
 app.get('/api/admin/ai', requireAdmin, (req, res) => {
   const cfg = loadAiConfig();
@@ -1423,6 +1588,7 @@ process.on('SIGTERM', async () => {
       REDIS_KEYS.users,          JSON.stringify(dbState.users),
       REDIS_KEYS.smtp_settings,  JSON.stringify(dbState.smtp_settings),
       REDIS_KEYS.reminders,      JSON.stringify(dbState.reminders),
+      REDIS_KEYS.favorites,      JSON.stringify(dbState.favorites),
       REDIS_KEYS.ai_config,      JSON.stringify(dbState.ai_config),
     );
     console.log('[DB] ✓ Letzter Stand gespeichert.');

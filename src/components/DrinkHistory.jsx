@@ -1,8 +1,8 @@
 import React from 'react';
-import { History, Trash2, Coffee } from 'lucide-react';
+import { History, Trash2, Coffee, Heart, HeartOff } from 'lucide-react';
 import { formatTime } from '../utils/caffeineUtils';
 
-const DrinkHistory = ({ logs, onDeleteLog, isLoading }) => {
+const DrinkHistory = ({ logs, onDeleteLog, onToggleFavorite, isFavoriteLog, isLoading }) => {
   if (logs.length === 0) {
     return (
       <div className="glass-card rounded-3xl p-6 animate-fade-in">
@@ -31,6 +31,9 @@ const DrinkHistory = ({ logs, onDeleteLog, isLoading }) => {
 
       <div className="space-y-2.5">
         {logs.map((log) => (
+          (() => {
+            const isFavorite = isFavoriteLog ? isFavoriteLog(log) : false;
+            return (
           <div
             key={log.id}
             className="flex items-center gap-3 p-3.5 rounded-2xl
@@ -58,6 +61,20 @@ const DrinkHistory = ({ logs, onDeleteLog, isLoading }) => {
               <span className="text-xs text-slate-500 ml-0.5">mg</span>
             </div>
 
+            <button
+              onClick={() => onToggleFavorite && onToggleFavorite(log, isFavorite)}
+              disabled={isLoading}
+              className={`p-1.5 rounded-xl transition-all duration-200 disabled:opacity-50
+                ${isFavorite
+                  ? 'text-pink-400 hover:text-pink-300 hover:bg-pink-500/10'
+                  : 'text-slate-600 hover:text-pink-400 hover:bg-pink-500/10'}
+              `}
+              aria-label={isFavorite ? 'Aus Favoriten entfernen' : 'Als Favorit markieren'}
+              title={isFavorite ? 'Aus Favoriten entfernen' : 'Als Favorit markieren'}
+            >
+              {isFavorite ? <HeartOff className="w-4 h-4" /> : <Heart className="w-4 h-4" />}
+            </button>
+
             {/* Delete */}
             <button
               onClick={() => onDeleteLog(log.id)}
@@ -70,6 +87,8 @@ const DrinkHistory = ({ logs, onDeleteLog, isLoading }) => {
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
+            );
+          })()
         ))}
       </div>
     </div>

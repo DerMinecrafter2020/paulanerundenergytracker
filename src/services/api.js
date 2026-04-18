@@ -68,3 +68,51 @@ export const saveReminderSettings = async (payload) => {
 
   return data;
 };
+
+export const fetchFavorites = async ({ userId, email }) => {
+  const url = new URL('/api/favorites/me', API_BASE_URL);
+  if (userId) url.searchParams.set('userId', userId);
+  if (email) url.searchParams.set('email', email);
+
+  const response = await fetch(url.toString());
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Fehler beim Laden der Favoriten');
+  }
+  return data;
+};
+
+export const addFavorite = async (payload) => {
+  const response = await fetch(`${API_BASE_URL}/api/favorites/me`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Fehler beim Speichern des Favoriten');
+  }
+
+  return data;
+};
+
+export const removeFavorite = async ({ userId, email, favoriteId }) => {
+  const url = new URL('/api/favorites/me', API_BASE_URL);
+  if (userId) url.searchParams.set('userId', userId);
+  if (email) url.searchParams.set('email', email);
+  if (favoriteId) url.searchParams.set('favoriteId', favoriteId);
+
+  const response = await fetch(url.toString(), {
+    method: 'DELETE',
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Fehler beim Entfernen des Favoriten');
+  }
+
+  return data;
+};
