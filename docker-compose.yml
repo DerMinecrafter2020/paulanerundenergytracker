@@ -1,16 +1,6 @@
 version: '3.8'
 
 services:
-  # ── Watchtower: polls Docker Hub every hour, auto-pulls + restarts koffein-tracker ──
-  watchtower:
-    image: containrrr/watchtower
-    container_name: koffein-watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    # Check every hour (3600 s). Only watch the koffein-tracker container.
-    command: --interval 3600 koffein-tracker
-    restart: unless-stopped
-
   # ── Redis: persistent storage, survives app container updates ──
   redis:
     image: redis:7-alpine
