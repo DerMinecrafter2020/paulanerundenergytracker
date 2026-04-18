@@ -66,23 +66,29 @@ app.use(express.static(distPath));
 
 // ── Redis DB ──────────────────────────────────────────────────────────────────
 const isDockerRuntime = fs.existsSync('/.dockerenv');
-const rawRedisUrl = String(process.env.REDIS_URL || '').trim();
-const envRedisUrl = rawRedisUrl.replace(/^['\"]|['\"]$/g, '');
+const cleanEnvValue = (value) => String(value || '').trim().replace(/^['\"]|['\"]$/g, '');
 
-const shouldMapToLocalhost = (urlStr) => {
-  if (!urlStr) return true;
-  try {
-    const parsed = new URL(urlStr);
-    return ['redis', 'koffein-redis'].includes(parsed.hostname);
-  } catch {
-    return /^redis(?::|$)/i.test(urlStr);
-  }
+const resolveRedisUrl = () => {
+  const envRedisUrl = cleanEnvValue(process.env.REDIS_URL);
+  if (envRedisUrl) return envRedisUrl;
+
+  const envRedisHost = cleanEnvValue(process.env.REDIS_HOST);
+  const envRedisPort = cleanEnvValue(process.env.REDIS_PORT) || '6379';
+
+  if (envRedisHost) return `redis://${envRedisHost}:${envRedisPort}`;
+  if (isDockerRuntime) return 'redis://redis:6379';
+  return 'redis://127.0.0.1:6379';
 };
 
-const shouldUseLocalhostRedis = !isDockerRuntime && shouldMapToLocalhost(envRedisUrl);
-const redisUrl = shouldUseLocalhostRedis
-  ? 'redis://127.0.0.1:6379'
-  : (envRedisUrl || 'redis://redis:6379');
+const redisUrl = resolveRedisUrl();
+let redisHost = '';
+try {
+  redisHost = new URL(redisUrl).hostname;
+} catch {
+  redisHost = '';
+}
+
+const isLocalRedisTarget = !isDockerRuntime && ['redis', 'koffein-redis'].includes(redisHost.toLowerCase());
 const REDIS_LOG_THROTTLE_MS = Number(process.env.REDIS_LOG_THROTTLE_MS || 15000);
 let lastRedisErrorLogAt = 0;
 let localRedisHintShown = false;
@@ -98,11 +104,14 @@ redis.on('error', (err) => {
     lastRedisErrorLogAt = now;
   }
 
-  const isLocalConnRefused = shouldUseLocalhostRedis
+  const isLocalConnRefused = !isDockerRuntime
     && (err?.code === 'ECONNREFUSED' || /ECONNREFUSED/i.test(String(err?.message || '')));
 
-  if (isLocalConnRefused && !localRedisHintShown) {
-    console.error('[Redis] Hinweis: Lokaler Start erkannt. Starte Redis lokal (z.B. Docker: "docker run --name dev-redis -p 6379:6379 -d redis:7-alpine") oder setze REDIS_URL auf einen erreichbaren Host.');
+  const isLocalNameResolution = isLocalRedisTarget
+    && (err?.code === 'ENOTFOUND' || /ENOTFOUND/i.test(String(err?.message || '')));
+
+  if ((isLocalConnRefused || isLocalNameResolution) && !localRedisHintShown) {
+    console.error('[Redis] Hinweis: Lokaler Start erkannt. Nutze REDIS_HOST=127.0.0.1 und REDIS_PORT=6379 (oder REDIS_URL=redis://127.0.0.1:6379).');
     localRedisHintShown = true;
   }
 });
