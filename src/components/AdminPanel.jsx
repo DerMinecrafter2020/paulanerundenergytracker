@@ -10,7 +10,7 @@ import { logout } from '../services/auth';
 import { fetchLogs, deleteLog as deleteApiLog } from '../services/api';
 import {
   fetchSmtpConfig, saveSmtpConfig, testSmtpConfig,
-  fetchAdminUsers, verifyAdminUser, deleteAdminUser, setUserRole,
+  fetchAdminUsers, verifyAdminUser, deleteAdminUser, setUserRole, createAdminUser,
   checkDockerUpdate, testDiscordWebhook, fetchAiConfig, saveAiConfig,
 } from '../services/adminApi';
 
@@ -87,6 +87,12 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel }) => {
   const [regUsers, setRegUsers]   = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersMsg, setUsersMsg]   = useState(null);
+
+  // ── Create User modal state ───────────────────────────────────────────
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '', role: 'user', verified: true });
+  const [createUserLoading, setCreateUserLoading] = useState(false);
+  const [showCreatePw, setShowCreatePw] = useState(false);
 
   // ── Update state ──────────────────────────────────────────────────────
   const [updateInfo, setUpdateInfo]   = useState(null);
@@ -208,6 +214,23 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel }) => {
       setRegUsers((prev) => prev.filter((u) => u.id !== id));
     } catch (err) {
       setUsersMsg({ type: 'error', text: err.message });
+    }
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    setCreateUserLoading(true);
+    setUsersMsg(null);
+    try {
+      const newUser = await createAdminUser(createForm);
+      setRegUsers((prev) => [newUser, ...prev]);
+      setUsersMsg({ type: 'success', text: `Benutzer "${newUser.name}" wurde erfolgreich erstellt.` });
+      setShowCreateUser(false);
+      setCreateForm({ name: '', email: '', password: '', role: 'user', verified: true });
+    } catch (err) {
+      setUsersMsg({ type: 'error', text: err.message });
+    } finally {
+      setCreateUserLoading(false);
     }
   };
 
@@ -633,18 +656,126 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel }) => {
         {/* ══════════ USERS TAB ══════════ */}
         {activeTab === 'users' && (
           <div className="animate-fade-in pb-10 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <h2 className="font-semibold text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-400" />
                 Registrierte Benutzer
               </h2>
-              <button onClick={loadRegUsers} disabled={usersLoading}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl glass-card
-                  text-slate-400 hover:text-white text-sm transition-all disabled:opacity-50">
-                <RefreshCw className={`w-4 h-4 ${usersLoading ? 'animate-spin' : ''}`} />
-                Aktualisieren
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setShowCreateUser(true); setUsersMsg(null); }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl
+                    bg-blue-600/20 border border-blue-500/30 text-blue-300
+                    hover:bg-blue-600/30 text-sm transition-all">
+                  <UserCheck className="w-4 h-4" />
+                  Benutzer erstellen
+                </button>
+                <button onClick={loadRegUsers} disabled={usersLoading}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl glass-card
+                    text-slate-400 hover:text-white text-sm transition-all disabled:opacity-50">
+                  <RefreshCw className={`w-4 h-4 ${usersLoading ? 'animate-spin' : ''}`} />
+                  Aktualisieren
+                </button>
+              </div>
             </div>
+
+            {/* ── Create User Modal ── */}
+            {showCreateUser && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style={{ background: 'rgba(0,0,0,0.7)' }}
+                onClick={(e) => { if (e.target === e.currentTarget) setShowCreateUser(false); }}>
+                <div className="glass-card rounded-2xl p-6 w-full max-w-md space-y-5 animate-slide-in">
+                  <h3 className="font-semibold text-white flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-blue-400" />
+                    Neuen Benutzer erstellen
+                  </h3>
+                  <form onSubmit={handleCreateUser} className="space-y-4">
+                    {/* Name */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Name</label>
+                      <input type="text" required value={createForm.name}
+                        onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
+                        placeholder="Max Mustermann" className="input-dark" />
+                    </div>
+                    {/* Email */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">E-Mail</label>
+                      <div className="relative">
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <input type="email" required value={createForm.email}
+                          onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
+                          placeholder="user@example.com" className="input-dark pl-10" />
+                      </div>
+                    </div>
+                    {/* Password */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Passwort</label>
+                      <div className="relative">
+                        <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <input type={showCreatePw ? 'text' : 'password'} required minLength={8}
+                          value={createForm.password}
+                          onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
+                          placeholder="Min. 8 Zeichen" className="input-dark pl-10 pr-10" />
+                        <button type="button" onClick={() => setShowCreatePw((v) => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                          {showCreatePw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    {/* Role */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Rolle</label>
+                      <div className="flex gap-2">
+                        {[{ value: 'user', label: 'Benutzer', icon: Zap }, { value: 'admin', label: 'Admin', icon: Shield }].map(({ value, label, icon: Icon }) => (
+                          <button key={value} type="button"
+                            onClick={() => setCreateForm((p) => ({ ...p, role: value }))}
+                            className={`flex items-center gap-2 flex-1 py-2.5 rounded-xl text-sm font-medium transition-all
+                              ${createForm.role === value
+                                ? value === 'admin'
+                                  ? 'bg-amber-500/20 border border-amber-500/50 text-amber-300'
+                                  : 'bg-blue-600/20 border border-blue-500/50 text-blue-300'
+                                : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'}`}>
+                            <Icon className="w-4 h-4 mx-auto" />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Verified toggle */}
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
+                      <div>
+                        <p className="text-sm text-white font-medium">Sofort verifizieren</p>
+                        <p className="text-xs text-slate-500">Benutzer kann sich direkt anmelden</p>
+                      </div>
+                      <button type="button"
+                        onClick={() => setCreateForm((p) => ({ ...p, verified: !p.verified }))}
+                        className={`relative w-12 h-6 rounded-full transition-all duration-300
+                          ${createForm.verified ? 'bg-green-500' : 'bg-white/10'}`}>
+                        <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300
+                          ${createForm.verified ? 'left-7' : 'left-1'}`} />
+                      </button>
+                    </div>
+                    {/* Actions */}
+                    <div className="flex gap-3 pt-1">
+                      <button type="button" onClick={() => setShowCreateUser(false)}
+                        className="flex-1 py-2.5 rounded-xl text-slate-400 bg-white/5
+                          border border-white/10 hover:bg-white/10 transition-all text-sm font-medium">
+                        Abbrechen
+                      </button>
+                      <button type="submit" disabled={createUserLoading}
+                        className="flex-1 py-2.5 rounded-xl font-semibold text-white
+                          bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400
+                          disabled:opacity-60 transition-all flex items-center justify-center gap-2">
+                        {createUserLoading
+                          ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          : <UserCheck className="w-4 h-4" />}
+                        Erstellen
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
 
             {usersMsg && (
               <div className={`glass-card rounded-2xl p-3 flex items-center gap-2 text-sm border animate-slide-in

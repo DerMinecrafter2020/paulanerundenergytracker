@@ -790,6 +790,49 @@ app.post('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+  const { name, email, password, role = 'user', verified = false } = req.body || {};
+
+  if (!name || !email || !password)
+    return res.status(400).json({ error: 'Name, E-Mail und Passwort sind erforderlich.' });
+  if (password.length < 8)
+    return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein.' });
+  if (!['admin', 'user'].includes(role))
+    return res.status(400).json({ error: 'Rolle muss "admin" oder "user" sein.' });
+
+  const lowerEmail = email.toLowerCase();
+  const existing = dbState.users.find((u) => u.email === lowerEmail);
+  if (existing)
+    return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits registriert.' });
+
+  const newId = crypto.randomUUID();
+  const newUser = {
+    id: newId,
+    name,
+    email: lowerEmail,
+    password_hash: hashPassword(password),
+    role,
+    verified: !!verified,
+    verify_token: null,
+    verify_token_expiry: null,
+    created_at: new Date().toISOString(),
+    last_login: null,
+  };
+
+  dbState.users.push(newUser);
+  persistDbState();
+
+  res.status(201).json({
+    id: newId,
+    name,
+    email: lowerEmail,
+    role,
+    verified: !!verified,
+    createdAt: newUser.created_at,
+    lastLogin: null,
+  });
+});
+
 // ── Public settings (no auth required) ────────────────────────────────────────
 app.get('/api/settings/public', async (req, res) => {
   try {

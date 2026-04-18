@@ -71,6 +71,13 @@ export const setUserRole = (id, role) =>
     body:    JSON.stringify({ role }),
   }).then(handle);
 
+export const createAdminUser = ({ name, email, password, role, verified }) =>
+  fetch(`${API_BASE}/api/admin/users`, {
+    method:  'POST',
+    headers: adminHeaders(),
+    body:    JSON.stringify({ name, email, password, role, verified }),
+  }).then(handle);
+
 export const fetchPublicSettings = () =>
   fetch(`${API_BASE}/api/settings/public`).then(handle);
 
