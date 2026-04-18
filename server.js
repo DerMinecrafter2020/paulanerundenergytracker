@@ -66,8 +66,20 @@ app.use(express.static(distPath));
 
 // ── Redis DB ──────────────────────────────────────────────────────────────────
 const isDockerRuntime = fs.existsSync('/.dockerenv');
-const envRedisUrl = String(process.env.REDIS_URL || '').trim();
-const shouldUseLocalhostRedis = !isDockerRuntime && (!envRedisUrl || /^redis:\/\/redis(?::|\/|$)/i.test(envRedisUrl));
+const rawRedisUrl = String(process.env.REDIS_URL || '').trim();
+const envRedisUrl = rawRedisUrl.replace(/^['\"]|['\"]$/g, '');
+
+const shouldMapToLocalhost = (urlStr) => {
+  if (!urlStr) return true;
+  try {
+    const parsed = new URL(urlStr);
+    return ['redis', 'koffein-redis'].includes(parsed.hostname);
+  } catch {
+    return /^redis(?::|$)/i.test(urlStr);
+  }
+};
+
+const shouldUseLocalhostRedis = !isDockerRuntime && shouldMapToLocalhost(envRedisUrl);
 const redisUrl = shouldUseLocalhostRedis
   ? 'redis://127.0.0.1:6379'
   : (envRedisUrl || 'redis://redis:6379');
@@ -119,6 +131,13 @@ const safeParse = (s, fallback) => {
 
 const loadDbState = async () => {
   try {
+    // Avoid command retry noise when Redis is currently unreachable.
+    const pingResult = await redis.ping().catch(() => null);
+    if (pingResult !== 'PONG') {
+      console.warn('[DB] Redis aktuell nicht erreichbar. Starte mit leerem In-Memory-Stand und versuche spaeter erneut.');
+      return;
+    }
+
     const [logs, users, smtp, reminders, ai] = await redis.mget(
       REDIS_KEYS.caffeine_logs,
       REDIS_KEYS.users,
