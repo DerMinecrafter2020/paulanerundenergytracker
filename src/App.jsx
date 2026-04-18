@@ -20,13 +20,38 @@ import {
 import { getSession, logout, startImpersonation, stopImpersonation, getImpersonatorSession } from './services/auth';
 
 const getTodayKey = () => new Date().toISOString().split('T')[0];
+const VIEW_STATE_KEY = 'et:last-view-state';
+
+const loadViewState = () => {
+  try {
+    const raw = localStorage.getItem(VIEW_STATE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveViewState = (nextState) => {
+  try {
+    localStorage.setItem(VIEW_STATE_KEY, JSON.stringify(nextState));
+  } catch {
+    // Ignore storage write errors
+  }
+};
 
 function App() {
+  const initialViewState = loadViewState();
   const [session, setSession]     = useState(() => getSession());
-  const [authView, setAuthView]   = useState('login'); // 'login' | 'register'
-  const [adminView, setAdminView] = useState('admin'); // 'admin' | 'user'
+  const [authView, setAuthView]   = useState(initialViewState.authView || 'login'); // 'login' | 'register'
+  const [adminView, setAdminView] = useState(initialViewState.adminView || 'admin'); // 'admin' | 'user'
+  const [adminTab, setAdminTab]   = useState(initialViewState.adminTab || 'overview');
+  const [userScrollY, setUserScrollY] = useState(Number(initialViewState.userScrollY) || 0);
 
   const impersonator = getImpersonatorSession();
+
+  useEffect(() => {
+    saveViewState({ authView, adminView, adminTab, userScrollY });
+  }, [authView, adminView, adminTab, userScrollY]);
 
   const handleImpersonate = (userData) => {
     const newSession = startImpersonation(userData);
@@ -60,6 +85,8 @@ function App() {
         onLogout={() => setSession(null)}
         onShowUserPanel={() => setAdminView('user')}
         onImpersonate={handleImpersonate}
+        initialActiveTab={adminTab}
+        onActiveTabChange={setAdminTab}
       />
     );
   }
@@ -86,6 +113,8 @@ function App() {
           session={session}
           onLogout={() => { logout(); setSession(null); }}
           onShowAdminPanel={session.role === 'admin' ? () => setAdminView('admin') : null}
+          initialScrollY={userScrollY}
+          onScrollPositionChange={setUserScrollY}
         />
       </div>
     </>
@@ -93,7 +122,7 @@ function App() {
 }
 
 // ── Tracker (extracted so hooks are always called in the same order) ────────
-function TrackerApp({ session, onLogout, onShowAdminPanel }) {
+function TrackerApp({ session, onLogout, onShowAdminPanel, initialScrollY, onScrollPositionChange }) {
   const [isOperationLoading, setIsOperationLoading] = useState(false);
   const [logs, setLogs]           = useState([]);
   const [error, setError]         = useState(null);
@@ -116,6 +145,23 @@ function TrackerApp({ session, onLogout, onShowAdminPanel }) {
     };
     loadToday();
   }, []);
+
+  useEffect(() => {
+    if (typeof initialScrollY === 'number' && initialScrollY > 0) {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: initialScrollY, behavior: 'auto' });
+      });
+    }
+  }, [initialScrollY]);
+
+  useEffect(() => {
+    const onScroll = () => {
+      if (onScrollPositionChange) onScrollPositionChange(window.scrollY || 0);
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [onScrollPositionChange]);
 
   // Update-Check
   useEffect(() => {

@@ -53,7 +53,7 @@ const StatCard = ({ icon: Icon, label, value, sub, color = 'blue' }) => {
 };
 
 // ── Main ────────────────────────────────────────────────────────────────────
-const AdminPanel = ({ session, onLogout, onShowUserPanel, onImpersonate }) => {
+const AdminPanel = ({ session, onLogout, onShowUserPanel, onImpersonate, initialActiveTab = 'overview', onActiveTabChange }) => {
   const [allLogs, setAllLogs]     = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError]         = useState(null);
@@ -61,7 +61,7 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel, onImpersonate }) => {
   const [search, setSearch]       = useState('');
   const [sortField, setSortField] = useState('createdAt');
   const [sortDir, setSortDir]     = useState('desc');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(initialActiveTab);
 
   // ── SMTP state ─────────────────────────────────────────────────────────
   const defaultSmtp = { host: '', port: 587, secure: false, auth: { user: '', pass: '' },
@@ -116,6 +116,10 @@ const AdminPanel = ({ session, onLogout, onShowUserPanel, onImpersonate }) => {
     if (activeTab === 'users') loadRegUsers();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  useEffect(() => {
+    if (onActiveTabChange) onActiveTabChange(activeTab);
+  }, [activeTab, onActiveTabChange]);
 
   const handleRedisCheck = async () => {
     setRedisChecking(true);
