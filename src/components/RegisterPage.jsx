@@ -102,9 +102,9 @@ const RegisterPage = ({ onBack }) => {
                   Name
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input type="text" value={form.name} onChange={set('name')}
-                    placeholder="Max Mustermann" autoComplete="name" className="input-dark pl-10" />
+                    placeholder="Max Mustermann" autoComplete="name" className="input-dark pl-12" />
                 </div>
               </div>
 
@@ -114,9 +114,9 @@ const RegisterPage = ({ onBack }) => {
                   E-Mail
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input type="email" value={form.email} onChange={set('email')}
-                    placeholder="deine@email.de" autoComplete="email" className="input-dark pl-10" />
+                    placeholder="deine@email.de" autoComplete="email" className="input-dark pl-12" />
                 </div>
               </div>
 
@@ -126,12 +126,12 @@ const RegisterPage = ({ onBack }) => {
                   Passwort <span className="text-slate-600 normal-case font-normal">(min. 8 Zeichen)</span>
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input type={showPw ? 'text' : 'password'} value={form.password}
                     onChange={set('password')} placeholder="••••••••"
-                    autoComplete="new-password" className="input-dark pl-10 pr-12" />
+                    autoComplete="new-password" className="input-dark pl-12 pr-12" />
                   <button type="button" onClick={() => setShowPw(v => !v)} tabIndex={-1}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
@@ -143,10 +143,10 @@ const RegisterPage = ({ onBack }) => {
                   Passwort bestätigen
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input type={showPw ? 'text' : 'password'} value={form.confirm}
                     onChange={set('confirm')} placeholder="••••••••"
-                    autoComplete="new-password" className="input-dark pl-10" />
+                    autoComplete="new-password" className="input-dark pl-12" />
                 </div>
               </div>
 
