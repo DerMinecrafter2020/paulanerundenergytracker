@@ -13,9 +13,6 @@ import LoginPage from './components/LoginPage';
 import AdminPanel from './components/AdminPanel';
 import RegisterPage from './components/RegisterPage';
 import {
-  DATA_SOURCES,
-  getSavedDataSource,
-  setSavedDataSource,
   fetchTodayLogs,
   addLog,
   removeLog,
@@ -26,16 +23,8 @@ const getTodayKey = () => new Date().toISOString().split('T')[0];
 
 function App() {
   const [session, setSession]     = useState(() => getSession());
-  const [isOperationLoading, setIsOperationLoading] = useState(false);
-  const [logs, setLogs]           = useState([]);
-  const [error, setError]         = useState(null);
-  const [manualPrefill, setManualPrefill] = useState(null);
-  const [dataSource, setDataSource] = useState(getSavedDataSource());
-  const [currentVersion, setCurrentVersion] = useState(null);
-  const [latestVersion, setLatestVersion]   = useState(null);
   const [authView, setAuthView]   = useState('login'); // 'login' | 'register'
   const [adminView, setAdminView] = useState('admin'); // 'admin' | 'user'
-  const isFirstCheck = useRef(true);
 
   const impersonator = getImpersonatorSession();
 
@@ -96,8 +85,6 @@ function App() {
         <TrackerApp
           session={session}
           onLogout={() => { logout(); setSession(null); }}
-          dataSource={dataSource}
-          setDataSource={setDataSource}
           onShowAdminPanel={session.role === 'admin' ? () => setAdminView('admin') : null}
         />
       </div>
@@ -106,7 +93,7 @@ function App() {
 }
 
 // ── Tracker (extracted so hooks are always called in the same order) ────────
-function TrackerApp({ session, onLogout, dataSource, setDataSource, onShowAdminPanel }) {
+function TrackerApp({ session, onLogout, onShowAdminPanel }) {
   const [isOperationLoading, setIsOperationLoading] = useState(false);
   const [logs, setLogs]           = useState([]);
   const [error, setError]         = useState(null);
@@ -120,15 +107,15 @@ function TrackerApp({ session, onLogout, dataSource, setDataSource, onShowAdminP
     const loadToday = async () => {
       try {
         const today = getTodayKey();
-        const todayLogs = await fetchTodayLogs(dataSource, today);
+        const todayLogs = await fetchTodayLogs(today);
         setLogs(todayLogs);
       } catch (err) {
-        setError('Fehler beim Laden der Daten. Prüfe die Datenquelle.');
+        setError('Fehler beim Laden der Daten.');
         console.error(err);
       }
     };
     loadToday();
-  }, [dataSource]);
+  }, []);
 
   // Update-Check
   useEffect(() => {
@@ -165,7 +152,7 @@ function TrackerApp({ session, onLogout, dataSource, setDataSource, onShowAdminP
     setError(null);
     try {
       const payload = { ...drinkData, date: getTodayKey() };
-      const created = await addLog(dataSource, payload);
+      const created = await addLog(payload);
       setLogs((prev) => [created, ...prev]);
     } catch (err) {
       setError('Fehler beim Hinzufügen. Bitte versuche es erneut.');
@@ -173,13 +160,13 @@ function TrackerApp({ session, onLogout, dataSource, setDataSource, onShowAdminP
     } finally {
       setIsOperationLoading(false);
     }
-  }, [dataSource]);
+  }, []);
 
   const handleDeleteLog = useCallback(async (logId) => {
     setIsOperationLoading(true);
     setError(null);
     try {
-      await removeLog(dataSource, logId);
+      await removeLog(logId);
       setLogs((prev) => prev.filter((log) => log.id !== logId));
     } catch (err) {
       setError('Fehler beim Löschen. Bitte versuche es erneut.');
@@ -187,7 +174,7 @@ function TrackerApp({ session, onLogout, dataSource, setDataSource, onShowAdminP
     } finally {
       setIsOperationLoading(false);
     }
-  }, [dataSource]);
+  }, []);
 
   return (
     <div className="min-h-screen" style={{ background: 'radial-gradient(ellipse at top, #0f172a 0%, #070b14 70%)' }}>
@@ -211,43 +198,6 @@ function TrackerApp({ session, onLogout, dataSource, setDataSource, onShowAdminP
             </button>
           </div>
         )}
-
-        {/* Datenquelle */}
-        <div className="glass-card rounded-3xl p-5 mb-6 animate-fade-in">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-300">Datenquelle</h3>
-            <span className="text-xs text-slate-500">
-              {dataSource === DATA_SOURCES.MYSQL ? 'MySQL API' : 'Lokal'}
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setSavedDataSource(DATA_SOURCES.LOCAL); setDataSource(DATA_SOURCES.LOCAL); }}
-              className={`flex-1 py-2.5 px-4 rounded-xl font-medium transition-all duration-200 text-sm
-                ${dataSource === DATA_SOURCES.LOCAL
-                  ? 'bg-blue-600 text-white shadow-glow-blue'
-                  : 'bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10'
-                }`}
-            >
-              Lokal
-            </button>
-            <button
-              type="button"
-              onClick={() => { setSavedDataSource(DATA_SOURCES.MYSQL); setDataSource(DATA_SOURCES.MYSQL); }}
-              className={`flex-1 py-2.5 px-4 rounded-xl font-medium transition-all duration-200 text-sm
-                ${dataSource === DATA_SOURCES.MYSQL
-                  ? 'bg-blue-600 text-white shadow-glow-blue'
-                  : 'bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10'
-                }`}
-            >
-              MySQL (API)
-            </button>
-          </div>
-          <p className="text-xs text-slate-600 mt-3">
-            MySQL benötigt den laufenden API-Server.
-          </p>
-        </div>
 
         {/* Error */}
         {error && (
