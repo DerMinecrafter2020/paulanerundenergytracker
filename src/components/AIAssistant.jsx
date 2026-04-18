@@ -1,8 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, X, Minimize2, Maximize2, MessageSquare } from 'lucide-react';
+import { Bot, Send, X, Minimize2, Maximize2, MessageSquare, GripHorizontal } from 'lucide-react';
 import { sendAiChat } from '../services/aiApi';
 
 const DAILY_LIMIT = 400;
+
+// Hilfsfunktion: Markdown ** zu HTML <strong> konvertieren
+const parseMarkdown = (text) => {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.*?)__/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/_(.*?)_/g, '<em>$1</em>');
+};
 
 const AIAssistant = ({ totalCaffeineToday = 0 }) => {
   const [open, setOpen]       = useState(false);
@@ -13,13 +22,47 @@ const AIAssistant = ({ totalCaffeineToday = 0 }) => {
   const [input, setInput]     = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [width, setWidth]     = useState(384); // w-96 = 384px
+  const [height, setHeight]   = useState(480);
+  const [isResizing, setIsResizing] = useState(null);
   const bottomRef             = useRef(null);
+  const containerRef          = useRef(null);
 
   useEffect(() => {
     if (open && !minimized) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, open, minimized]);
+
+  // Resize Handling
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e) => {
+      if (isResizing === 'se') { // South-East
+        const newWidth = Math.max(320, e.clientX - containerRef.current?.getBoundingClientRect().left);
+        const newHeight = Math.max(300, e.clientY - containerRef.current?.getBoundingClientRect().top);
+        setWidth(newWidth);
+        setHeight(newHeight);
+      } else if (isResizing === 's') { // South
+        const newHeight = Math.max(300, e.clientY - containerRef.current?.getBoundingClientRect().top);
+        setHeight(newHeight);
+      } else if (isResizing === 'e') { // East
+        const newWidth = Math.max(320, e.clientX - containerRef.current?.getBoundingClientRect().left);
+        setWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => setIsResizing(null);
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   const handleSend = async () => {
     const text = input.trim();
@@ -68,9 +111,15 @@ const AIAssistant = ({ totalCaffeineToday = 0 }) => {
   }
 
   return (
-    <div className={`fixed bottom-6 right-6 z-50 flex flex-col rounded-2xl shadow-2xl overflow-hidden transition-all duration-200
-      ${minimized ? 'h-14 w-72' : 'h-[480px] w-80 sm:w-96'}`}
-      style={{ background: 'linear-gradient(160deg, rgba(30,22,50,0.98), rgba(15,10,30,0.98))', border: '1px solid rgba(139,92,246,0.3)' }}
+    <div
+      ref={containerRef}
+      className={`fixed bottom-6 right-6 z-50 flex flex-col rounded-2xl shadow-2xl overflow-hidden transition-all duration-200 ${minimized ? 'cursor-auto' : 'cursor-auto'}`}
+      style={{
+        width: minimized ? 288 : `${width}px`,
+        height: minimized ? 56 : `${height}px`,
+        background: 'linear-gradient(160deg, rgba(30,22,50,0.98), rgba(15,10,30,0.98))',
+        border: '1px solid rgba(139,92,246,0.3)',
+      }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-700/80 to-purple-700/60 shrink-0">
@@ -99,7 +148,11 @@ const AIAssistant = ({ totalCaffeineToday = 0 }) => {
                     ? 'bg-violet-600 text-white rounded-br-sm'
                     : 'bg-white/8 text-slate-200 rounded-bl-sm border border-white/10'}`}
                 >
-                  {msg.content}
+                  {msg.role === 'assistant' ? (
+                    <div dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }} />
+                  ) : (
+                    msg.content
+                  )}
                 </div>
               </div>
             ))}
@@ -141,6 +194,30 @@ const AIAssistant = ({ totalCaffeineToday = 0 }) => {
               </button>
             </div>
           </div>
+        </>
+      )}
+
+      {/* Resize Handles */}
+      {!minimized && (
+        <>
+          {/* South-East corner */}
+          <div
+            onMouseDown={() => setIsResizing('se')}
+            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize hover:bg-violet-500/20 rounded-tl"
+            style={{ background: 'linear-gradient(135deg, transparent 50%, rgba(139,92,246,0.4) 50%)' }}
+          />
+          {/* South edge */}
+          <div
+            onMouseDown={() => setIsResizing('s')}
+            className="absolute bottom-0 left-0 right-0 h-1 cursor-s-resize hover:bg-violet-500/30"
+            style={{ background: 'linear-gradient(180deg, transparent 50%, rgba(139,92,246,0.2) 50%)' }}
+          />
+          {/* East edge */}
+          <div
+            onMouseDown={() => setIsResizing('e')}
+            className="absolute top-0 bottom-0 right-0 w-1 cursor-e-resize hover:bg-violet-500/30"
+            style={{ background: 'linear-gradient(90deg, transparent 50%, rgba(139,92,246,0.2) 50%)' }}
+          />
         </>
       )}
     </div>
